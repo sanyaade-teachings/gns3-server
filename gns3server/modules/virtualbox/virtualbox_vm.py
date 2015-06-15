@@ -29,11 +29,11 @@ import socket
 import asyncio
 
 from pkg_resources import parse_version
+from gns3server.utils.telnet_server import TelnetServer
 from .virtualbox_error import VirtualBoxError
 from ..nios.nio_udp import NIOUDP
 from ..nios.nio_nat import NIONAT
 from ..adapters.ethernet_adapter import EthernetAdapter
-from .telnet_server import TelnetServer  # TODO: port TelnetServer to asyncio
 from ..base_vm import BaseVM
 
 if sys.platform.startswith('win'):
@@ -65,6 +65,7 @@ class VirtualBoxVM(BaseVM):
         self._adapters = adapters
         self._ethernet_adapters = {}
         self._headless = False
+        self._acpi_shutdown = False
         self._enable_remote_console = False
         self._vmname = vmname
         self._use_any_adapter = False
@@ -79,6 +80,7 @@ class VirtualBoxVM(BaseVM):
                 "project_id": self.project.id,
                 "vmname": self.vmname,
                 "headless": self.headless,
+                "acpi_shutdown": self.acpi_shutdown,
                 "enable_remote_console": self.enable_remote_console,
                 "adapters": self._adapters,
                 "adapter_type": self.adapter_type,
@@ -205,11 +207,16 @@ class VirtualBoxVM(BaseVM):
         self._stop_remote_console()
         vm_state = yield from self._get_vm_state()
         if vm_state == "running" or vm_state == "paused" or vm_state == "stuck":
-            # power off the VM
-            result = yield from self._control_vm("poweroff")
-            log.info("VirtualBox VM '{name}' [{id}] stopped".format(name=self.name, id=self.id))
-            log.debug("Stop result: {}".format(result))
+            if self.acpi_shutdown:
+                # use ACPI to shutdown the VM
+                result = yield from self._control_vm("acpipowerbutton")
+                log.debug("ACPI shutdown result: {}".format(result))
+            else:
+                # power off the VM
+                result = yield from self._control_vm("poweroff")
+                log.debug("Stop result: {}".format(result))
 
+            log.info("VirtualBox VM '{name}' [{id}] stopped".format(name=self.name, id=self.id))
             # yield from asyncio.sleep(0.5)  # give some time for VirtualBox to unlock the VM
             try:
                 # deactivate the first serial port
@@ -318,6 +325,7 @@ class VirtualBoxVM(BaseVM):
                     if nio and isinstance(nio, NIOUDP):
                         self.manager.port_manager.release_udp_port(nio.lport, self._project)
 
+        self.acpi_shutdown = False
         yield from self.stop()
 
         if self._linked_clone:
@@ -388,6 +396,30 @@ class VirtualBoxVM(BaseVM):
         else:
             log.info("VirtualBox VM '{name}' [{id}] has disabled the headless mode".format(name=self.name, id=self.id))
         self._headless = headless
+
+    @property
+    def acpi_shutdown(self):
+        """
+        Returns either the VM will use ACPI shutdown
+
+        :returns: boolean
+        """
+
+        return self._acpi_shutdown
+
+    @acpi_shutdown.setter
+    def acpi_shutdown(self, acpi_shutdown):
+        """
+        Sets either the VM will use ACPI shutdown
+
+        :param acpi_shutdown: boolean
+        """
+
+        if acpi_shutdown:
+            log.info("VirtualBox VM '{name}' [{id}] has enabled the ACPI shutdown mode".format(name=self.name, id=self.id))
+        else:
+            log.info("VirtualBox VM '{name}' [{id}] has disabled the ACPI shutdown mode".format(name=self.name, id=self.id))
+        self._acpi_shutdown = acpi_shutdown
 
     @property
     def enable_remote_console(self):
@@ -799,18 +831,22 @@ class VirtualBoxVM(BaseVM):
 
         try:
             adapter = self._ethernet_adapters[adapter_number]
-        except IndexError:
+        except KeyError:
             raise VirtualBoxError("Adapter {adapter_number} doesn't exist on VirtualBox VM '{name}'".format(name=self.name,
                                                                                                             adapter_number=adapter_number))
 
         vm_state = yield from self._get_vm_state()
         if vm_state == "running":
-            # dynamically configure an UDP tunnel on the VirtualBox adapter
-            yield from self._control_vm("nic{} generic UDPTunnel".format(adapter_number + 1))
-            yield from self._control_vm("nicproperty{} sport={}".format(adapter_number + 1, nio.lport))
-            yield from self._control_vm("nicproperty{} dest={}".format(adapter_number + 1, nio.rhost))
-            yield from self._control_vm("nicproperty{} dport={}".format(adapter_number + 1, nio.rport))
-            yield from self._control_vm("setlinkstate{} on".format(adapter_number + 1))
+            if isinstance(nio, NIOUDP):
+                # dynamically configure an UDP tunnel on the VirtualBox adapter
+                yield from self._control_vm("nic{} generic UDPTunnel".format(adapter_number + 1))
+                yield from self._control_vm("nicproperty{} sport={}".format(adapter_number + 1, nio.lport))
+                yield from self._control_vm("nicproperty{} dest={}".format(adapter_number + 1, nio.rhost))
+                yield from self._control_vm("nicproperty{} dport={}".format(adapter_number + 1, nio.rport))
+                yield from self._control_vm("setlinkstate{} on".format(adapter_number + 1))
+            elif isinstance(nio, NIONAT):
+                yield from self._control_vm("nic{} nat".format(adapter_number + 1))
+                yield from self._control_vm("setlinkstate{} on".format(adapter_number + 1))
 
         adapter.add_nio(0, nio)
         log.info("VirtualBox VM '{name}' [{id}]: {nio} added to adapter {adapter_number}".format(name=self.name,
@@ -830,7 +866,7 @@ class VirtualBoxVM(BaseVM):
 
         try:
             adapter = self._ethernet_adapters[adapter_number]
-        except IndexError:
+        except KeyError:
             raise VirtualBoxError("Adapter {adapter_number} doesn't exist on VirtualBox VM '{name}'".format(name=self.name,
                                                                                                             adapter_number=adapter_number))
 
@@ -851,6 +887,7 @@ class VirtualBoxVM(BaseVM):
                                                                                                      adapter_number=adapter_number))
         return nio
 
+    @asyncio.coroutine
     def start_capture(self, adapter_number, output_file):
         """
         Starts a packet capture.
@@ -861,11 +898,19 @@ class VirtualBoxVM(BaseVM):
 
         try:
             adapter = self._ethernet_adapters[adapter_number]
-        except IndexError:
+        except KeyError:
             raise VirtualBoxError("Adapter {adapter_number} doesn't exist on VirtualBox VM '{name}'".format(name=self.name,
                                                                                                             adapter_number=adapter_number))
 
+        vm_state = yield from self._get_vm_state()
+        if vm_state == "running" or vm_state == "paused" or vm_state == "stuck":
+            raise VirtualBoxError("Sorry, packet capturing on a started VirtualBox VM is not supported.")
+
         nio = adapter.get_nio(0)
+
+        if not nio:
+            raise VirtualBoxError("Adapter {} is not connected".format(adapter_number))
+
         if nio.capturing:
             raise VirtualBoxError("Packet capture is already activated on adapter {adapter_number}".format(adapter_number=adapter_number))
 
@@ -883,11 +928,15 @@ class VirtualBoxVM(BaseVM):
 
         try:
             adapter = self._ethernet_adapters[adapter_number]
-        except IndexError:
+        except KeyError:
             raise VirtualBoxError("Adapter {adapter_number} doesn't exist on VirtualBox VM '{name}'".format(name=self.name,
                                                                                                             adapter_number=adapter_number))
 
         nio = adapter.get_nio(0)
+
+        if not nio:
+            raise VirtualBoxError("Adapter {} is not connected".format(adapter_number))
+
         nio.stopPacketCapture()
 
         log.info("VirtualBox VM '{name}' [{id}]: stopping packet capture on adapter {adapter_number}".format(name=self.name,

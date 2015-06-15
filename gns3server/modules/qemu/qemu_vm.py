@@ -22,11 +22,13 @@ order to run a QEMU VM.
 
 import sys
 import os
+import re
 import shutil
 import subprocess
 import shlex
 import asyncio
 import socket
+import gns3server
 
 from .qemu_error import QemuError
 from ..adapters.ethernet_adapter import EthernetAdapter
@@ -34,9 +36,8 @@ from ..nios.nio_udp import NIOUDP
 from ..nios.nio_tap import NIOTAP
 from ..nios.nio_nat import NIONAT
 from ..base_vm import BaseVM
-from ...schemas.qemu import QEMU_OBJECT_SCHEMA
+from ...schemas.qemu import QEMU_OBJECT_SCHEMA, QEMU_PLATFORMS
 from ...utils.asyncio import monitor_process
-from ...config import Config
 
 import logging
 log = logging.getLogger(__name__)
@@ -54,10 +55,11 @@ class QemuVM(BaseVM):
     :param manager: Manager instance
     :param console: TCP console port
     :param qemu_path: path to the QEMU binary
+    :param platform: Platform to emulate
     :param console: TCP console port
     """
 
-    def __init__(self, name, vm_id, project, manager, qemu_path=None, console=None):
+    def __init__(self, name, vm_id, project, manager, qemu_path=None, console=None, platform=None):
 
         super().__init__(name, vm_id, project, manager, console=console)
         server_config = manager.config.get_section_config("Server")
@@ -70,11 +72,23 @@ class QemuVM(BaseVM):
         self._stdout_file = ""
 
         # QEMU VM settings
-        self._qemu_path = qemu_path
+
+        if qemu_path:
+            try:
+                self.qemu_path = qemu_path
+            except QemuError as e:
+                if platform:
+                    self.platform = platform
+                else:
+                    raise e
+        else:
+            self.platform = platform
+
         self._hda_disk_image = ""
         self._hdb_disk_image = ""
         self._hdc_disk_image = ""
         self._hdd_disk_image = ""
+        self._mac_address = ""
         self._options = ""
         self._ram = 256
         self._ethernet_adapters = []
@@ -83,9 +97,12 @@ class QemuVM(BaseVM):
         self._kernel_image = ""
         self._kernel_command_line = ""
         self._legacy_networking = False
+        self._kvm = True
+        self._acpi_shutdown = False
         self._cpu_throttling = 0  # means no CPU throttling
         self._process_priority = "low"
 
+        self.mac_address = ""  # this will generate a MAC address
         self.adapters = 1  # creates 1 adapter by default
         log.info('QEMU VM "{name}" [{id}] has been created'.format(name=self._name, id=self._id))
 
@@ -120,6 +137,20 @@ class QemuVM(BaseVM):
         if qemu_path and os.pathsep not in qemu_path:
             qemu_path = shutil.which(qemu_path)
 
+        self._check_qemu_path(qemu_path)
+        self._qemu_path = qemu_path
+        self._platform = os.path.basename(qemu_path)
+        if self._platform == "qemu-kvm":
+            self._platform = "x86_64"
+        else:
+            self._platform = re.sub(r'^qemu-system-(.*)(w.exe)?$', r'\1', os.path.basename(qemu_path), re.IGNORECASE)
+        if self._platform not in QEMU_PLATFORMS:
+            raise QemuError("Platform {} is unknown".format(self._platform))
+        log.info('QEMU VM "{name}" [{id}] has set the QEMU path to {qemu_path}'.format(name=self._name,
+                                                                                       id=self._id,
+                                                                                       qemu_path=qemu_path))
+
+    def _check_qemu_path(self, qemu_path):
         if qemu_path is None:
             raise QemuError("QEMU binary path is not set or not found in the path")
         if not os.path.exists(qemu_path):
@@ -127,10 +158,20 @@ class QemuVM(BaseVM):
         if not os.access(qemu_path, os.X_OK):
             raise QemuError("QEMU binary '{}' is not executable".format(qemu_path))
 
-        self._qemu_path = qemu_path
-        log.info('QEMU VM "{name}" [{id}] has set the QEMU path to {qemu_path}'.format(name=self._name,
-                                                                                       id=self._id,
-                                                                                       qemu_path=qemu_path))
+    @property
+    def platform(self):
+        """
+        Return the current platform
+        """
+        return self._platform
+
+    @platform.setter
+    def platform(self, platform):
+        self._platform = platform
+        if sys.platform.startswith("win"):
+            self.qemu_path = "qemu-system-{}w.exe".format(platform)
+        else:
+            self.qemu_path = "qemu-system-{}".format(platform)
 
     @property
     def hda_disk_image(self):
@@ -276,6 +317,33 @@ class QemuVM(BaseVM):
                                                                                           adapter_type=adapter_type))
 
     @property
+    def mac_address(self):
+        """
+        Returns the MAC address for this QEMU VM.
+
+        :returns: adapter type (string)
+        """
+
+        return self._mac_address
+
+    @mac_address.setter
+    def mac_address(self, mac_address):
+        """
+        Sets the MAC address for this QEMU VM.
+
+        :param mac_address: MAC address
+        """
+
+        if not mac_address:
+            self._mac_address = "00:00:ab:%s:%s:00" % (self.id[-4:-2], self.id[-2:])
+        else:
+            self._mac_address = mac_address
+
+        log.info('QEMU VM "{name}" [{id}]: MAC address changed to {mac_addr}'.format(name=self._name,
+                                                                                     id=self._id,
+                                                                                     mac_addr=mac_address))
+
+    @property
     def legacy_networking(self):
         """
         Returns either QEMU legacy networking commands are used.
@@ -298,6 +366,54 @@ class QemuVM(BaseVM):
         else:
             log.info('QEMU VM "{name}" [{id}] has disabled legacy networking'.format(name=self._name, id=self._id))
         self._legacy_networking = legacy_networking
+
+    @property
+    def acpi_shutdown(self):
+        """
+        Returns either this QEMU VM can be ACPI shutdown.
+
+        :returns: boolean
+        """
+
+        return self._acpi_shutdown
+
+    @acpi_shutdown.setter
+    def acpi_shutdown(self, acpi_shutdown):
+        """
+        Sets either this QEMU VM can be ACPI shutdown.
+
+        :param acpi_shutdown: boolean
+        """
+
+        if acpi_shutdown:
+            log.info('QEMU VM "{name}" [{id}] has enabled ACPI shutdown'.format(name=self._name, id=self._id))
+        else:
+            log.info('QEMU VM "{name}" [{id}] has disabled ACPI shutdown'.format(name=self._name, id=self._id))
+        self._acpi_shutdown = acpi_shutdown
+
+    @property
+    def kvm(self):
+        """
+        Returns either this QEMU VM uses KVM acceleration.
+
+        :returns: boolean
+        """
+
+        return self._kvm
+
+    @kvm.setter
+    def kvm(self, kvm):
+        """
+        Sets either this QEMU VM uses KVM acceleration.
+
+        :param kvm: boolean
+        """
+
+        if kvm:
+            log.info('QEMU VM "{name}" [{id}] has enabled KVM acceleration'.format(name=self._name, id=self._id))
+        else:
+            log.info('QEMU VM "{name}" [{id}] has disabled KVM acceleration'.format(name=self._name, id=self._id))
+        self._kvm = kvm
 
     @property
     def cpu_throttling(self):
@@ -390,7 +506,11 @@ class QemuVM(BaseVM):
         log.info('QEMU VM "{name}" [{id}] has set the QEMU options to {options}'.format(name=self._name,
                                                                                         id=self._id,
                                                                                         options=options))
-        self._options = options
+        if "-enable-kvm" in options:
+            self.kvm = True
+            options = options.replace("-enable-kvm", "")
+
+        self._options = options.strip()
 
     @property
     def initrd(self):
@@ -564,10 +684,15 @@ class QemuVM(BaseVM):
 
             if self._manager.config.get_section_config("Qemu").getboolean("monitor", True):
                 try:
-                    # let the OS find an unused port for the Qemu monitor
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                        sock.bind((self._monitor_host, 0))
-                        self._monitor = sock.getsockname()[1]
+                    info = socket.getaddrinfo(self._monitor_host, 0, socket.AF_UNSPEC, socket.SOCK_STREAM, 0, socket.AI_PASSIVE)
+                    if not info:
+                        raise QemuError("getaddrinfo returns an empty list on {}".format(self._monitor_host))
+                    for res in info:
+                        af, socktype, proto, _, sa = res
+                        # let the OS find an unused port for the Qemu monitor
+                        with socket.socket(af, socktype, proto) as sock:
+                            sock.bind(sa)
+                            self._monitor = sock.getsockname()[1]
                 except OSError as e:
                     raise QemuError("Could not find free port for the Qemu monitor: {}".format(e))
 
@@ -616,14 +741,18 @@ class QemuVM(BaseVM):
         if self.is_running():
             log.info('Stopping QEMU VM "{}" PID={}'.format(self._name, self._process.pid))
             try:
-                self._process.terminate()
-                self._process.wait()
-            except subprocess.TimeoutExpired:
+                if self.acpi_shutdown:
+                    yield from self._control_vm("system_powerdown")
+                    yield from gns3server.utils.asyncio.wait_for_process_termination(self._process, timeout=30)
+                else:
+                    self._process.terminate()
+                    yield from gns3server.utils.asyncio.wait_for_process_termination(self._process, timeout=3)
+            except asyncio.TimeoutError:
                 self._process.kill()
                 if self._process.returncode is None:
                     log.warn('QEMU VM "{}" PID={} is still running'.format(self._name, self._process.pid))
-        self._process = None
         self.status = "stopped"
+        self._process = None
         self._stop_cpulimit()
 
     @asyncio.coroutine
@@ -674,6 +803,7 @@ class QemuVM(BaseVM):
         """
 
         log.debug('QEMU VM "{name}" [{id}] is closing'.format(name=self._name, id=self._id))
+        self.acpi_shutdown = False
         yield from self.stop()
         if self._console:
             self._manager.port_manager.release_tcp_port(self._console, self._project)
@@ -756,6 +886,8 @@ class QemuVM(BaseVM):
                                                                                                  adapter_number=adapter_number))
 
         if self.is_running():
+            raise QemuError("Sorry, adding a link to a started Qemu VM is not supported.")
+            # FIXME: does the code below work? very undocumented feature...
             # dynamically configure an UDP tunnel on the QEMU VM adapter
             if nio and isinstance(nio, NIOUDP):
                 if self._legacy_networking:
@@ -766,7 +898,6 @@ class QemuVM(BaseVM):
                                                                                                                           nio.rport,
                                                                                                                           nio.rhost))
                 else:
-                    # FIXME: does it work? very undocumented feature...
                     # Apparently there is a bug in Qemu...
                     # netdev_add [user|tap|socket|hubport|netmap],id=str[,prop=value][,...] -- add host network device
                     # netdev_del id -- remove host network device
@@ -800,6 +931,7 @@ class QemuVM(BaseVM):
                                                                                                  adapter_number=adapter_number))
 
         if self.is_running():
+            # FIXME: does the code below work? very undocumented feature...
             # dynamically disable the QEMU VM adapter
             yield from self._control_vm("host_net_remove {} gns3-{}".format(adapter_number, adapter_number))
             yield from self._control_vm("host_net_add user vlan={},name=gns3-{}".format(adapter_number, adapter_number))
@@ -1001,8 +1133,7 @@ class QemuVM(BaseVM):
         network_options = []
         network_options.extend(["-net", "none"])  # we do not want any user networking back-end if no adapter is connected.
         for adapter_number, adapter in enumerate(self._ethernet_adapters):
-            # TODO: let users specify a base mac address
-            mac = "00:00:ab:%s:%s:%02x" % (self.id[-4:-2], self.id[-2:], adapter_number)
+            mac = "%s%02x" % (self._mac_address[:-2], (int(self._mac_address[-2:]) + adapter_number) % 255)
             nio = adapter.get_nio(0)
             if self._legacy_networking:
                 # legacy QEMU networking syntax (-net)
@@ -1061,6 +1192,8 @@ class QemuVM(BaseVM):
         command = [self.qemu_path]
         command.extend(["-name", self._name])
         command.extend(["-m", str(self._ram)])
+        if sys.platform.startswith("linux") and self._kvm:
+            command.extend(["-enable-kvm"])
         disk_options = yield from self._disk_options()
         command.extend(disk_options)
         command.extend(self._linux_boot_options())

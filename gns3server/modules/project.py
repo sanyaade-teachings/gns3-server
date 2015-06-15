@@ -19,6 +19,7 @@ import aiohttp
 import os
 import shutil
 import asyncio
+import hashlib
 
 from uuid import UUID, uuid4
 from .port_manager import PortManager
@@ -149,13 +150,17 @@ class Project:
         self._path = path
         self._update_temporary_file()
 
-        # The order of operation is important because we want to avoid losing
-        # data
-        if old_path:
+    @asyncio.coroutine
+    def clean_old_path(self, old_path):
+        """
+        Called after a project location change. All the modules should
+        have been notified before
+        """
+        if self._temporary:
             try:
-                shutil.rmtree(old_path)
+                yield from wait_run_in_executor(shutil.rmtree, old_path)
             except OSError as e:
-                raise aiohttp.web.HTTPConflict(text="Can't remove temporary directory {}: {}".format(old_path, e))
+                log.warn("Can't remove temporary directory {}: {}".format(old_path, e))
 
     @property
     def name(self):
@@ -457,3 +462,42 @@ class Project:
         """Stop sending notification to this clients"""
 
         self._listeners.remove(queue)
+
+    @asyncio.coroutine
+    def list_files(self):
+        """
+        :returns: Array of files in project without temporary files. The files are dictionnary {"path": "test.bin", "md5sum": "aaaaa"}
+        """
+
+        files = []
+        for (dirpath, dirnames, filenames) in os.walk(self.path):
+            for filename in filenames:
+                if not filename.endswith(".ghost"):
+                    path = os.path.relpath(dirpath, self.path)
+                    path = os.path.join(path, filename)
+                    path = os.path.normpath(path)
+                    file_info = {"path": path}
+
+                    try:
+                        file_info["md5sum"] = yield from wait_run_in_executor(self._hash_file, os.path.join(dirpath, filename))
+                    except OSError:
+                        continue
+                    files.append(file_info)
+
+        return files
+
+    def _hash_file(self, path):
+        """
+        Compute and md5 hash for file
+
+        :returns: hexadecimal md5
+        """
+
+        m = hashlib.md5()
+        with open(path, "rb") as f:
+            while True:
+                buf = f.read(128)
+                if not buf:
+                    break
+                m.update(buf)
+        return m.hexdigest()

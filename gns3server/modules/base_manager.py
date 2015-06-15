@@ -28,6 +28,7 @@ import logging
 log = logging.getLogger(__name__)
 
 from uuid import UUID, uuid4
+from gns3server.utils.interfaces import is_interface_up
 from ..config import Config
 from ..utils.asyncio import wait_run_in_executor
 from .project_manager import ProjectManager
@@ -357,20 +358,29 @@ class BaseManager:
             rhost = nio_settings["rhost"]
             rport = nio_settings["rport"]
             try:
-                # TODO: handle IPv6
-                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                    sock.connect((rhost, rport))
+                info = socket.getaddrinfo(rhost, rport, socket.AF_UNSPEC, socket.SOCK_DGRAM, 0, socket.AI_PASSIVE)
+                if not info:
+                    raise aiohttp.web.HTTPInternalServerError(text="getaddrinfo returns an empty list on {}:{}".format(rhost, rport))
+                for res in info:
+                    af, socktype, proto, _, sa = res
+                    with socket.socket(af, socktype, proto) as sock:
+                        sock.connect(sa)
             except OSError as e:
                 raise aiohttp.web.HTTPInternalServerError(text="Could not create an UDP connection to {}:{}: {}".format(rhost, rport, e))
             nio = NIOUDP(lport, rhost, rport)
         elif nio_settings["type"] == "nio_tap":
             tap_device = nio_settings["tap_device"]
+            if not is_interface_up(tap_device):
+                raise aiohttp.web.HTTPConflict(text="TAP interface {} is down".format(tap_device))
             # FIXME: check for permissions on tap device
             # if not self._has_privileged_access(executable):
             #    raise aiohttp.web.HTTPForbidden(text="{} has no privileged access to {}.".format(executable, tap_device))
             nio = NIOTAP(tap_device)
         elif nio_settings["type"] == "nio_generic_ethernet":
-            nio = NIOGenericEthernet(nio_settings["ethernet_device"])
+            ethernet_device = nio_settings["ethernet_device"]
+            if not is_interface_up(ethernet_device):
+                raise aiohttp.web.HTTPConflict(text="Ethernet interface {} is down".format(ethernet_device))
+            nio = NIOGenericEthernet(ethernet_device)
         elif nio_settings["type"] == "nio_nat":
             nio = NIONAT()
         assert nio is not None

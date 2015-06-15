@@ -88,6 +88,7 @@ class Router(BaseVM):
             self._exec_area = 64  # 64 MB on other systems
         self._disk0 = 0  # Megabytes
         self._disk1 = 0  # Megabytes
+        self._auto_delete_disks = False
         self._aux = aux
         self._mac_addr = ""
         self._system_id = "FTX0945W0MY"  # processor board ID in IOS
@@ -146,6 +147,7 @@ class Router(BaseVM):
                        "exec_area": self._exec_area,
                        "disk0": self._disk0,
                        "disk1": self._disk1,
+                       "auto_delete_disks": self._auto_delete_disks,
                        "console": self._console,
                        "aux": self._aux,
                        "mac_addr": self._mac_addr,
@@ -182,6 +184,16 @@ class Router(BaseVM):
 
     @asyncio.coroutine
     def create(self):
+
+        # delete any previous file with same Dynamips identifier
+        project_dir = os.path.join(self.project.module_working_directory(self.manager.module_name.lower()))
+        for file in glob.glob(os.path.join(project_dir, "c[0-9][0-9][0-9][0-9]_i{}_*".format(self._dynamips_id))):
+            try:
+                log.debug("Deleting file {}".format(file))
+                yield from wait_run_in_executor(os.remove, file)
+            except OSError as e:
+                log.warn("Could not delete file {}: {}".format(file, e))
+                continue
 
         if not self._hypervisor:
             module_workdir = self.project.module_working_directory(self.manager.module_name.lower())
@@ -357,6 +369,20 @@ class Router(BaseVM):
                 pass
             yield from self.hypervisor.stop()
 
+        if self._auto_delete_disks:
+            # delete nvram and disk files
+            project_dir = os.path.join(self.project.module_working_directory(self.manager.module_name.lower()))
+            files = glob.glob(os.path.join(project_dir, "{}_i{}_disk[0-1]".format(self.platform, self.dynamips_id)))
+            files += glob.glob(os.path.join(project_dir, "{}_i{}_slot[0-1]".format(self.platform, self.dynamips_id)))
+            files += glob.glob(os.path.join(project_dir, "{}_i{}_nvram".format(self.platform, self.dynamips_id)))
+            files += glob.glob(os.path.join(project_dir, "{}_i{}_flash[0-1]".format(self.platform, self.dynamips_id)))
+            for file in files:
+                try:
+                    log.debug("Deleting file {}".format(file))
+                    yield from wait_run_in_executor(os.remove, file)
+                except OSError as e:
+                    log.warn("Could not delete file {}: {}".format(file, e))
+                    continue
         self._closed = True
 
     @property
@@ -851,7 +877,7 @@ class Router(BaseVM):
         return self._disk1
 
     @asyncio.coroutine
-    def disk1(self, disk1):
+    def set_disk1(self, disk1):
         """
         Sets the size (MB) for PCMCIA disk1.
 
@@ -865,6 +891,30 @@ class Router(BaseVM):
                                                                                                     old_disk1=self._disk1,
                                                                                                     new_disk1=disk1))
         self._disk1 = disk1
+
+    @property
+    def auto_delete_disks(self):
+        """
+        Returns True if auto delete disks is enabled on this router.
+
+        :returns: boolean either auto delete disks is activated or not
+        """
+
+        return self._auto_delete_disks
+
+    @asyncio.coroutine
+    def set_auto_delete_disks(self, auto_delete_disks):
+        """
+        Enable/disable use of auto delete disks
+
+        :param auto_delete_disks: activate/deactivate auto delete disks (boolean)
+        """
+
+        if auto_delete_disks:
+            log.info('Router "{name}" [{id}]: auto delete disks enabled'.format(name=self._name, id=self._id))
+        else:
+            log.info('Router "{name}" [{id}]: auto delete disks disabled'.format(name=self._name, id=self._id))
+        self._auto_delete_disks = auto_delete_disks
 
     @asyncio.coroutine
     def set_console(self, console):
@@ -1318,6 +1368,10 @@ class Router(BaseVM):
 
         nio = adapter.get_nio(port_number)
 
+        if not nio:
+            raise DynamipsError("Port {slot_number}/{port_number} is not connected".format(slot_number=slot_number,
+                                                                                           port_number=port_number))
+
         if nio.input_filter[0] is not None and nio.output_filter[0] is not None:
             raise DynamipsError("Port {port_number} has already a filter applied on {adapter}".format(adapter=adapter,
                                                                                                       port_number=port_number))
@@ -1350,6 +1404,11 @@ class Router(BaseVM):
                                                                                                 port_number=port_number))
 
         nio = adapter.get_nio(port_number)
+
+        if not nio:
+            raise DynamipsError("Port {slot_number}/{port_number} is not connected".format(slot_number=slot_number,
+                                                                                           port_number=port_number))
+
         yield from nio.unbind_filter("both")
 
         log.info('Router "{name}" [{id}]: stopping packet capture on port {slot_number}/{port_number}'.format(name=self._name,
@@ -1505,6 +1564,9 @@ class Router(BaseVM):
             module_workdir = self.project.module_working_directory(self.manager.module_name.lower())
             startup_config_base64, private_config_base64 = yield from self.extract_config()
             if startup_config_base64:
+                if not self.startup_config:
+                    self._startup_config = os.path.join("configs", "i{}_startup-config.cfg".format(self._dynamips_id))
+
                 try:
                     config = base64.b64decode(startup_config_base64).decode("utf-8", errors="replace")
                     config = "!\n" + config.replace("\r", "")
@@ -1516,6 +1578,9 @@ class Router(BaseVM):
                     raise DynamipsError("Could not save the startup configuration {}: {}".format(config_path, e))
 
             if private_config_base64:
+                if not self.private_config:
+                    self._private_config = os.path.join("configs", "i{}_private-config.cfg".format(self._dynamips_id))
+
                 try:
                     config = base64.b64decode(private_config_base64).decode("utf-8", errors="replace")
                     config = "!\n" + config.replace("\r", "")

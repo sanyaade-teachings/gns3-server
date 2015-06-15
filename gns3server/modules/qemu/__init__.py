@@ -39,21 +39,21 @@ class Qemu(BaseManager):
     _VM_CLASS = QemuVM
 
     @staticmethod
-    def binary_list():
+    def paths_list():
         """
-        Gets QEMU binaries list available on the host.
+        Gets a folder list of possibly available QEMU binaries on the host.
 
-        :returns: Array of dictionary {"path": Qemu binary path, "version": version of Qemu}
+        :returns: List of folders where Qemu binaries MAY reside.
         """
 
         qemus = []
-        paths = []
+        paths = set()
         try:
-            paths.append(os.getcwd())
+            paths.add(os.getcwd())
         except FileNotFoundError:
             log.warning("The current working directory doesn't exist")
         if "PATH" in os.environ:
-            paths.extend(os.environ["PATH"].split(os.pathsep))
+            paths.update(os.environ["PATH"].split(os.pathsep))
         else:
             log.warning("The PATH environment variable doesn't exist")
         # look for Qemu binaries in the current working directory and $PATH
@@ -64,18 +64,33 @@ class Qemu(BaseManager):
                 exec_dir = os.path.dirname(os.path.abspath(sys.executable))
                 for f in os.listdir(exec_dir):
                     if f.lower().startswith("qemu"):
-                        paths.append(os.path.join(exec_dir, f))
+                        paths.add(os.path.join(exec_dir, f))
 
             if "PROGRAMFILES(X86)" in os.environ and os.path.exists(os.environ["PROGRAMFILES(X86)"]):
-                paths.append(os.path.join(os.environ["PROGRAMFILES(X86)"], "qemu"))
+                paths.add(os.path.join(os.environ["PROGRAMFILES(X86)"], "qemu"))
             if "PROGRAMFILES" in os.environ and os.path.exists(os.environ["PROGRAMFILES"]):
-                paths.append(os.path.join(os.environ["PROGRAMFILES"], "qemu"))
+                paths.add(os.path.join(os.environ["PROGRAMFILES"], "qemu"))
         elif sys.platform.startswith("darwin"):
             # add specific locations on Mac OS X regardless of what's in $PATH
-            paths.extend(["/usr/local/bin", "/opt/local/bin"])
+            paths.update(["/usr/bin", "/usr/local/bin", "/opt/local/bin"])
             if hasattr(sys, "frozen"):
-                paths.append(os.path.abspath(os.path.join(os.getcwd(), "../../../qemu/bin/")))
-        for path in paths:
+                try:
+                    paths.add(os.path.abspath(os.path.join(os.getcwd(), "../../../qemu/bin/")))
+                # If the user run the server by hand from outside
+                except FileNotFoundError:
+                    paths.add("/Applications/GNS3.app/Contents/Resources/qemu/bin")
+        return paths
+
+    @staticmethod
+    def binary_list():
+        """
+        Gets QEMU binaries list available on the host.
+
+        :returns: Array of dictionary {"path": Qemu binary path, "version": version of Qemu}
+        """
+
+        qemus = []
+        for path in Qemu.paths_list():
             try:
                 for f in os.listdir(path):
                     if (f.startswith("qemu-system") or f.startswith("qemu-kvm") or f == "qemu" or f == "qemu.exe") and \
@@ -88,6 +103,28 @@ class Qemu(BaseManager):
                 continue
 
         return qemus
+
+    @staticmethod
+    def img_binary_list():
+        """
+        Gets QEMU-img binaries list available on the host.
+
+        :returns: Array of dictionary {"path": Qemu-img binary path, "version": version of Qemu-img}
+        """
+        qemu_imgs = []
+        for path in Qemu.paths_list():
+            try:
+                for f in os.listdir(path):
+                    if (f == "qemu-img" or f == "qemu-img.exe") and \
+                            os.access(os.path.join(path, f), os.X_OK) and \
+                            os.path.isfile(os.path.join(path, f)):
+                        qemu_path = os.path.join(path, f)
+                        version = yield from Qemu._get_qemu_img_version(qemu_path)
+                        qemu_imgs.append({"path": qemu_path, "version": version})
+            except OSError:
+                continue
+
+        return qemu_imgs
 
     @staticmethod
     @asyncio.coroutine
@@ -110,6 +147,26 @@ class Qemu(BaseManager):
                 raise QemuError("Could not determine the Qemu version for {}".format(qemu_path))
         except subprocess.SubprocessError as e:
             raise QemuError("Error while looking for the Qemu version: {}".format(e))
+
+    @staticmethod
+    @asyncio.coroutine
+    def _get_qemu_img_version(qemu_img_path):
+        """
+        Gets the Qemu-img version.
+
+        :param qemu_img_path: path to Qemu-img executable.
+        """
+
+        try:
+            output = yield from subprocess_check_output(qemu_img_path, "--version")
+            match = re.search("version\s+([0-9a-z\-\.]+)", output)
+            if match:
+                version = match.group(1)
+                return version
+            else:
+                raise QemuError("Could not determine the Qemu-img version for {}".format(qemu_img_path))
+        except subprocess.SubprocessError as e:
+            raise QemuError("Error while looking for the Qemu-img version: {}".format(e))
 
     @staticmethod
     def get_legacy_vm_workdir(legacy_vm_id, name):

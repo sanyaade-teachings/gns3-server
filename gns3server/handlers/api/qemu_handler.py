@@ -51,9 +51,10 @@ class QEMUHandler:
         qemu = Qemu.instance()
         vm = yield from qemu.create_vm(request.json.pop("name"),
                                        request.match_info["project_id"],
-                                       request.json.get("vm_id"),
-                                       qemu_path=request.json.get("qemu_path"),
-                                       console=request.json.get("console"))
+                                       request.json.pop("vm_id", None),
+                                       qemu_path=request.json.pop("qemu_path", None),
+                                       platform=request.json.pop("platform", None),
+                                       console=request.json.pop("console", None))
 
         for name, value in request.json.items():
             if hasattr(vm, name) and getattr(vm, name) != value:
@@ -290,6 +291,21 @@ class QEMUHandler:
     def list_binaries(request, response):
 
         binaries = yield from Qemu.binary_list()
+        response.json(binaries)
+
+    @classmethod
+    @Route.get(
+        r"/qemu/img-binaries",
+        status_codes={
+            200: "Success",
+            400: "Invalid request",
+            404: "Instance doesn't exist"
+        },
+        description="Get a list of available Qemu-img binaries",
+        output=QEMU_BINARY_LIST_SCHEMA)
+    def list_img_binaries(request, response):
+
+        binaries = yield from Qemu.img_binary_list()
         response.json(binaries)
 
     @Route.get(

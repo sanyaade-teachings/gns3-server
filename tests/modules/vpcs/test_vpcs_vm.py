@@ -150,11 +150,11 @@ def test_add_nio_binding_udp(vm):
     assert nio.lport == 4242
 
 
-def test_add_nio_binding_tap(vm):
+def test_add_nio_binding_tap(vm, ethernet_device):
     with patch("gns3server.modules.base_manager.BaseManager._has_privileged_access", return_value=True):
-        nio = VPCS.instance().create_nio(vm.vpcs_path, {"type": "nio_tap", "tap_device": "test"})
+        nio = VPCS.instance().create_nio(vm.vpcs_path, {"type": "nio_tap", "tap_device": ethernet_device})
         vm.port_add_nio_binding(0, nio)
-        assert nio.tap_device == "test"
+        assert nio.tap_device == ethernet_device
 
 
 # def test_add_nio_binding_tap_no_privileged_access(vm):
@@ -200,9 +200,9 @@ def test_update_startup_script_h(vm):
 
 
 def test_get_startup_script(vm):
-    content = "echo GNS3 VPCS\nip 192.168.1.2\n"
+    content = "echo GNS3 VPCS\nip 192.168.1.2"
     vm.startup_script = content
-    assert vm.startup_script == content
+    assert vm.startup_script == os.linesep.join(["echo GNS3 VPCS", "ip 192.168.1.2"])
 
 
 def test_get_startup_script_using_default_script(vm):

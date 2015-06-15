@@ -20,6 +20,7 @@ import sys
 import struct
 import platform
 
+
 try:
     import raven
     RAVEN_AVAILABLE = True
@@ -29,9 +30,20 @@ except ImportError:
 
 from .version import __version__
 from .config import Config
+from .utils.get_resource import get_resource
 
 import logging
 log = logging.getLogger(__name__)
+
+
+# Dev build
+if __version__[4] != 0:
+    import faulthandler
+
+    # Display a traceback in case of segfault crash. Usefull when frozen
+    # Not enabled by default for security reason
+    log.info("Enable catching segfault")
+    faulthandler.enable()
 
 
 class CrashReport:
@@ -40,10 +52,10 @@ class CrashReport:
     Report crash to a third party service
     """
 
-    DSN = "sync+https://9e6f04df72c74b6894a6dcd2928d069e:2035d1beb1654136b170f1e91f05ee51@app.getsentry.com/38482"
+    DSN = "sync+https://1d821222775c4cf3a66ee462e22780df:4f95f621d9b54d6a8afe0d92ed076969@app.getsentry.com/38482"
     if hasattr(sys, "frozen"):
-        cacert = os.path.join(os.getcwd(), "cacert.pem")
-        if os.path.isfile(cacert):
+        cacert = get_resource("cacert.pem")
+        if cacert is not None and os.path.isfile(cacert):
             DSN += "?ca_certs={}".format(cacert)
         else:
             log.warning("The SSL certificate bundle file '{}' could not be found".format(cacert))

@@ -19,8 +19,13 @@ import sys
 from setuptools import setup, find_packages
 from setuptools.command.test import test as TestCommand
 
+# we only support Python 3 version >= 3.4
+if sys.version_info < (3, 4):
+    raise SystemExit("Python 3.4 or higher is required")
+
 
 class PyTest(TestCommand):
+
     def finalize_options(self):
         TestCommand.finalize_options(self)
         self.test_args = []
@@ -33,7 +38,6 @@ class PyTest(TestCommand):
         errcode = pytest.main(self.test_args)
         sys.exit(errcode)
 
-
 dependencies = [
     "jsonschema>=2.4.0",
     "aiohttp>=0.15.1",
@@ -41,9 +45,12 @@ dependencies = [
     "raven>=5.2.0"
 ]
 
-
-if sys.version_info == (3, 3):
-    dependencies.append("asyncio>=3.4.2")
+try:
+    import netifaces
+except ImportError:
+    # add gns3-netifaces only if netifaces isn't already installed
+    # for instance via a Debian package.
+    dependencies.append("gns3-netifaces>=0.10.4.1")
 
 setup(
     name="gns3-server",
@@ -58,7 +65,7 @@ setup(
     entry_points={
         "console_scripts": [
             "gns3server = gns3server.main:main",
-            "gns3dms = gns3dms.main:main",
+            "gns3vmnet = utils.vmnet:main",
         ]
     },
     packages=find_packages(".", exclude=["docs", "tests"]),
@@ -75,8 +82,8 @@ setup(
         "Operating System :: OS Independent",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.3",
         "Programming Language :: Python :: 3.4",
+        "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: Implementation :: CPython",
     ],
 )
