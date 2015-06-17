@@ -15,6 +15,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from aiohttp.web import HTTPConflict
+
 from ...web.route import Route
 from ...modules.docker import Docker
 
@@ -64,7 +66,7 @@ class DockerHandler:
         )
         # FIXME: DO WE NEED THIS?
         for name, value in request.json.items():
-            if name != "vm_id":
+            if name != "_vm_id":
                 if hasattr(container, name) and getattr(container, name) != value:
                     setattr(container, name, value)
 

@@ -63,7 +63,7 @@ class Container(BaseVM):
         return {
             "name": self._name,
             "id": self._id,
-            "cid": self._id,
+            "cid": self._cid,
             "project_id": self._project.id,
             "image": self._image,
         }
