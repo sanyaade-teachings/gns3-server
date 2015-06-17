@@ -45,11 +45,13 @@ class Container(BaseVM):
     :param manager: Manager instance
     :param image: Docker image
     """
-    def __init__(self, name, image, project, manager):
+    def __init__(self, name, id, project, manager, image):
         self._name = name
+        self._id = id
         self._project = project
         self._manager = manager
         self._image = image
+        self._temporary_directory = None
 
         log.debug(
             "{module}: {name} [{image}] initialized.".format(
@@ -61,6 +63,7 @@ class Container(BaseVM):
         return {
             "name": self._name,
             "id": self._id,
+            "cid": self._id,
             "project_id": self._project.id,
             "image": self._image,
         }
@@ -74,7 +77,7 @@ class Container(BaseVM):
         """
         try:
             result = yield from self.manager.execute(
-                "inspect_container", {"container": self._id})
+                "inspect_container", {"container": self._cid})
             for state, value in result["State"].items():
                 if value is True:
                     return state.lower()
@@ -88,7 +91,7 @@ class Container(BaseVM):
         """Creates the Docker container."""
         result = yield from self.manager.execute(
             "create_container", {"name": self._name, "image": self._image})
-        self._id = result['Id']
+        self._cid = result['Id']
         log.info("Docker container '{name}' [{id}] created".format(
             name=self._name, id=self._id))
         return True
@@ -101,7 +104,7 @@ class Container(BaseVM):
             self.unpause()
         else:
             result = yield from self.manager.execute(
-                "start", {"container": self._id})
+                "start", {"container": self._cid})
         log.info("Docker container '{name}' [{image}] started".format(
             name=self._name, image=self._image))
 
@@ -120,7 +123,7 @@ class Container(BaseVM):
     def restart(self):
         """Restarts this Docker container."""
         result = yield from self.manager.execute(
-            "restart", {"container": self._id})
+            "restart", {"container": self._cid})
         log.info("Docker container '{name}' [{image}] restarted".format(
             name=self._name, image=self._image))
 
@@ -128,7 +131,7 @@ class Container(BaseVM):
     def stop(self):
         """Stops this Docker container."""
         result = yield from self.manager.execute(
-            "kill", {"container": self._id})
+            "kill", {"container": self._cid})
         log.info("Docker container '{name}' [{image}] stopped".format(
             name=self._name, image=self._image))
 
@@ -136,7 +139,7 @@ class Container(BaseVM):
     def pause(self):
         """Pauses this Docker container."""
         result = yield from self.manager.execute(
-            "pause", {"container": self._id})
+            "pause", {"container": self._cid})
         log.info("Docker container '{name}' [{image}] paused".format(
             name=self._name, image=self._image))
 
@@ -144,7 +147,7 @@ class Container(BaseVM):
     def unpause(self):
         """Unpauses this Docker container."""
         result = yield from self.manager.execute(
-            "unpause", {"container": self._id})
+            "unpause", {"container": self._cid})
         log.info("Docker container '{name}' [{image}] unpaused".format(
             name=self._name, image=self._image))
 
@@ -155,6 +158,24 @@ class Container(BaseVM):
         if state == "paused":
             self.unpause()
         result = yield from self.manager.execute(
-            "remove_container", {"container": self._id, "force": True})
+            "remove_container", {"container": self._cid, "force": True})
         log.info("Docker container '{name}' [{image}] removed".format(
             name=self._name, image=self._image))
+
+    @asyncio.coroutine
+    def close(self):
+        """Closes this Docker container."""
+        log.debug("Docker container '{name}' [{id}] is closing".format(
+            name=self.name, id=self._cid))
+        for adapter in self._ethernet_adapters.values():
+            if adapter is not None:
+                for nio in adapter.ports.values():
+                    if nio and isinstance(nio, NIOUDP):
+                        self.manager.port_manager.release_udp_port(
+                            nio.lport, self._project)
+
+        yield from self.remove()
+
+        log.info("Docker container '{name}' [{id}] closed".format(
+            name=self.name, id=self._cid))
+        self._closed = True
