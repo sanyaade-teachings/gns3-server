@@ -208,11 +208,11 @@ class DockerHandler:
             request.match_info["id"],
             project_id=request.match_info["project_id"])
         nio_type = request.json["type"]
-        if nio_type not in ("nio_gen_eth", "nio_gen_linux"):
+        if nio_type not in ("nio_udp"):
             raise HTTPConflict(
                 text="NIO of type {} is not supported".format(nio_type))
-        nio = docker_manager.create_nio(request.json)
-        yield from container.adapter_add_nio_binding(
+        nio = docker_manager.create_nio(False, request.json)
+        container.adapter_add_nio_binding(
             int(request.match_info["adapter_number"]), nio)
         response.set_status(201)
         response.json(nio)

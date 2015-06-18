@@ -192,7 +192,7 @@ class Container(BaseVM):
             adapter = self._ethernet_adapters[adapter_number]
         except IndexError:
             raise DockerError(
-                "Adapter {adapter_number} doesn't exist on VMware VM '{name}'".format(
+                "Adapter {adapter_number} doesn't exist on Docker container '{name}'".format(
                     name=self.name, adapter_number=adapter_number))
 
         adapter.add_nio(0, nio)
