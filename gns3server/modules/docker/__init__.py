@@ -138,7 +138,7 @@ class Docker(BaseManager):
         return container
 
     @asyncio.coroutine
-    def create_nio(self, node, nio_settings):
+    def create_nio(self, nio_settings):
         """Creates a new NIO.
 
         :param node: Docker container

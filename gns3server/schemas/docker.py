@@ -48,7 +48,7 @@ DOCKER_CREATE_SCHEMA = {
             "maximum": 64,
         },
         "adapter_type": {
-            "description": "VirtualBox adapter type",
+            "description": "Docker adapter type",
             "type": "string",
             "minLength": 1,
         },
@@ -83,7 +83,7 @@ DOCKER_UPDATE_SCHEMA = {
             "maximum": 64,
         },
         "adapter_type": {
-            "description": "VirtualBox adapter type",
+            "description": "Docker adapter type",
             "type": "string",
             "minLength": 1,
         },
@@ -117,6 +117,13 @@ DOCKER_OBJECT_SCHEMA = {
             "minLength": 1,
         },
         "id": {
+            "description": "Docker container instance UUID",
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "pattern": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"
+        },
+        "cid": {
             "description": "Docker container ID",
             "type": "string",
             "minLength": 64,
@@ -142,7 +149,7 @@ DOCKER_OBJECT_SCHEMA = {
             "maximum": 64,
         },
         "adapter_type": {
-            "description": "VirtualBox adapter type",
+            "description": "Docker adapter type",
             "type": "string",
             "minLength": 1,
         },

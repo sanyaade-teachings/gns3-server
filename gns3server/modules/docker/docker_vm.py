@@ -32,6 +32,7 @@ import docker
 from pkg_resources import parse_version
 from .docker_error import DockerError
 from ..base_vm import BaseVM
+from ..adapters.ethernet_adapter import EthernetAdapter
 
 import logging
 log = logging.getLogger(__name__)
@@ -45,13 +46,14 @@ class Container(BaseVM):
     :param manager: Manager instance
     :param image: Docker image
     """
-    def __init__(self, name, id, project, manager, image):
+    def __init__(self, name, vm_id, project, manager, image):
         self._name = name
-        self._id = id
+        self._id = vm_id
         self._project = project
         self._manager = manager
         self._image = image
         self._temporary_directory = None
+        self._ethernet_adapters = []
 
         log.debug(
             "{module}: {name} [{image}] initialized.".format(
@@ -179,3 +181,49 @@ class Container(BaseVM):
         log.info("Docker container '{name}' [{id}] closed".format(
             name=self.name, id=self._cid))
         self._closed = True
+
+    def adapter_add_nio_binding(self, adapter_number, nio):
+        """Adds an adapter NIO binding.
+
+        :param adapter_number: adapter number
+        :param nio: NIO instance to add to the slot/port
+        """
+        try:
+            adapter = self._ethernet_adapters[adapter_number]
+        except IndexError:
+            raise DockerError(
+                "Adapter {adapter_number} doesn't exist on VMware VM '{name}'".format(
+                    name=self.name, adapter_number=adapter_number))
+
+        adapter.add_nio(0, nio)
+        log.info("Docker container '{name}' [{id}]: {nio} added to adapter {adapter_number}".format(
+            name=self.name,
+            id=self._id,
+            nio=nio,
+            adapter_number=adapter_number))
+
+    @property
+    def adapters(self):
+        """Returns the number of Ethernet adapters for this QEMU VM.
+
+        :returns: number of adapters
+        :rtype: int
+        """
+        return len(self._ethernet_adapters)
+
+    @adapters.setter
+    def adapters(self, adapters):
+        """Sets the number of Ethernet adapters for this Docker container.
+
+        :param adapters: number of adapters
+        """
+
+        self._ethernet_adapters.clear()
+        for adapter_number in range(0, adapters):
+            self._ethernet_adapters.append(EthernetAdapter())
+
+        log.info(
+            'Docker container "{name}" [{id}]: number of Ethernet adapters changed to {adapters}'.format(
+                name=self._name,
+                id=self._id,
+                adapters=adapters))
