@@ -219,7 +219,7 @@ class DockerHandler:
 
     @classmethod
     @Route.delete(
-        r"/projects/{project_id}/virtualbox/images/{id}/adapters/{adapter_number:\d+}/ports/{port_number:\d+}/nio",
+        r"/projects/{project_id}/docker/images/{id}/adapters/{adapter_number:\d+}/ports/{port_number:\d+}/nio",
         parameters={
             "project_id": "UUID for the project",
             "id": "ID of the container",

@@ -19,11 +19,7 @@
 Docker server module.
 """
 
-import os
-import sys
-import shutil
 import asyncio
-import subprocess
 import logging
 import aiohttp
 import docker
@@ -73,23 +69,6 @@ class Docker(BaseManager):
         except Exception as error:
             raise DockerError("Docker has returned an error: {}".format(error))
         return result
-
-    # FIXME: do this in docker
-    @asyncio.coroutine
-    def project_closed(self, project):
-        """Called when a project is closed.
-
-        :param project: Project instance
-        """
-        yield from super().project_closed(project)
-        hdd_files_to_close = yield from self._find_inaccessible_hdd_files()
-        for hdd_file in hdd_files_to_close:
-            log.info("Closing VirtualBox VM disk file {}".format(os.path.basename(hdd_file)))
-            try:
-                yield from self.execute("closemedium", ["disk", hdd_file])
-            except VirtualBoxError as e:
-                log.warning("Could not close VirtualBox VM disk file {}: {}".format(os.path.basename(hdd_file), e))
-                continue
 
     @asyncio.coroutine
     def list_images(self):
