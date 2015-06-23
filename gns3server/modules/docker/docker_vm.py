@@ -92,7 +92,14 @@ class Container(BaseVM):
     def create(self):
         """Creates the Docker container."""
         result = yield from self.manager.execute(
-            "create_container", {"name": self._name, "image": self._image})
+            "create_container", {
+                "name": self._name,
+                "image": self._image,
+                "network_disabled": True,
+                "host_config": create_host_config(
+                    privileged=True, cap_add=['ALL'])
+            }
+        )
         self._cid = result['Id']
         log.info("Docker container '{name}' [{id}] created".format(
             name=self._name, id=self._id))
