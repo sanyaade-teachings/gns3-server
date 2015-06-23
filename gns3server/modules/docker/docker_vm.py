@@ -28,11 +28,13 @@ import json
 import socket
 import asyncio
 import docker
+from docker.utils import create_host_config
 
 from pkg_resources import parse_version
 from .docker_error import DockerError
 from ..base_vm import BaseVM
 from ..adapters.ethernet_adapter import EthernetAdapter
+from ..nios.nio_udp import NIOUDP
 
 import logging
 log = logging.getLogger(__name__)
@@ -207,6 +209,31 @@ class Container(BaseVM):
             name=self.name,
             id=self._id,
             nio=nio,
+            adapter_number=adapter_number))
+
+    def adapter_remove_nio_binding(self, adapter_number):
+        """Removes an adapter NIO binding.
+
+        :param adapter_number: adapter number
+
+        :returns: NIO instance
+        """
+
+        try:
+            adapter = self._ethernet_adapters[adapter_number]
+        except IndexError:
+            raise DockerError(
+                "Adapter {adapter_number} doesn't exist on Docker container '{name}'".format(
+                    name=self.name, adapter_number=adapter_number))
+
+        nio = adapter.get_nio(0)
+        if isinstance(nio, NIOUDP):
+            self.manager.port_manager.release_udp_port(
+                nio.lport, self._project)
+        adapter.remove_nio(0)
+
+        log.info("Docker container '{name}' [{id}]: {nio} removed from adapter {adapter_number}".format(
+            name=self.name, id=self.id, nio=nio,
             adapter_number=adapter_number))
 
     @property

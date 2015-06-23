@@ -237,6 +237,6 @@ class DockerHandler:
         container = docker_manager.get_container(
             request.match_info["id"],
             project_id=request.match_info["project_id"])
-        yield from container.adapter_remove_nio_binding(
+        container.adapter_remove_nio_binding(
             int(request.match_info["adapter_number"]))
         response.set_status(204)
