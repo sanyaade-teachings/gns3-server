@@ -82,8 +82,15 @@ class Container(BaseVM):
         try:
             result = yield from self.manager.execute(
                 "inspect_container", {"container": self._cid})
-            for state, value in result["State"].items():
+            result_dict = {state.lower(): value for state, value in result["State"].items()}
+            for state, value in result_dict.items():
                 if value is True:
+                    # a container can be both paused and running
+                    if state == "paused":
+                        return "paused"
+                    if state == "running":
+                        if "paused" in result_dict and result_dict["paused"] is True:
+                            return "paused"
                     return state.lower()
             return 'exited'
         except Exception as err:
@@ -141,6 +148,9 @@ class Container(BaseVM):
     @asyncio.coroutine
     def stop(self):
         """Stops this Docker container."""
+        state = yield from self._get_container_state()
+        if state == "paused":
+            self.unpause()
         result = yield from self.manager.execute(
             "kill", {"container": self._cid})
         log.info("Docker container '{name}' [{image}] stopped".format(
@@ -159,6 +169,7 @@ class Container(BaseVM):
         """Unpauses this Docker container."""
         result = yield from self.manager.execute(
             "unpause", {"container": self._cid})
+        state = yield from self._get_container_state()
         log.info("Docker container '{name}' [{image}] unpaused".format(
             name=self._name, image=self._image))
 
@@ -168,6 +179,8 @@ class Container(BaseVM):
         state = yield from self._get_container_state()
         if state == "paused":
             self.unpause()
+        if state == "running":
+            self.stop()
         result = yield from self.manager.execute(
             "remove_container", {"container": self._cid, "force": True})
         log.info("Docker container '{name}' [{image}] removed".format(
