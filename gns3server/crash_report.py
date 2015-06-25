@@ -52,7 +52,7 @@ class CrashReport:
     Report crash to a third party service
     """
 
-    DSN = "sync+https://1d821222775c4cf3a66ee462e22780df:4f95f621d9b54d6a8afe0d92ed076969@app.getsentry.com/38482"
+    DSN = "sync+https://c06a407cbe0d4036be7873b54ebfa0ef:d6129d3fe91a4ea0b96ecbcf99678b1b@app.getsentry.com/38482"
     if hasattr(sys, "frozen"):
         cacert = get_resource("cacert.pem")
         if cacert is not None and os.path.isfile(cacert):
@@ -63,6 +63,13 @@ class CrashReport:
 
     def __init__(self):
         self._client = None
+
+        # We don't want sentry making noise if an error is catched when you don't have internet
+        sentry_errors = logging.getLogger('sentry.errors')
+        sentry_errors.disabled = True
+
+        sentry_uncaught = logging.getLogger('sentry.errors.uncaught')
+        sentry_uncaught.disabled = True
 
     def capture_exception(self, request=None):
         if not RAVEN_AVAILABLE:
