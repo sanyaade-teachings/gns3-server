@@ -119,7 +119,7 @@ class Container(BaseVM):
         """Starts this Docker container."""
         state = yield from self._get_container_state()
         if state == "paused":
-            self.unpause()
+            yield from self.unpause()
         else:
             result = yield from self.manager.execute(
                 "start", {"container": self._cid})
@@ -132,7 +132,7 @@ class Container(BaseVM):
         :returns: True or False
         :rtype: bool
         """
-        state = self._get_container_state()
+        state = yield from self._get_container_state()
         if state == "running":
             return True
         return False
@@ -150,7 +150,7 @@ class Container(BaseVM):
         """Stops this Docker container."""
         state = yield from self._get_container_state()
         if state == "paused":
-            self.unpause()
+            yield from self.unpause()
         result = yield from self.manager.execute(
             "kill", {"container": self._cid})
         log.info("Docker container '{name}' [{image}] stopped".format(
@@ -178,9 +178,9 @@ class Container(BaseVM):
         """Removes this Docker container."""
         state = yield from self._get_container_state()
         if state == "paused":
-            self.unpause()
+            yield from self.unpause()
         if state == "running":
-            self.stop()
+            yield from self.stop()
         result = yield from self.manager.execute(
             "remove_container", {"container": self._cid, "force": True})
         log.info("Docker container '{name}' [{image}] removed".format(
@@ -216,6 +216,16 @@ class Container(BaseVM):
             raise DockerError(
                 "Adapter {adapter_number} doesn't exist on Docker container '{name}'".format(
                     name=self.name, adapter_number=adapter_number))
+
+        state = yield from self._get_container_state()
+        if state == "running":
+            if isinstance(nio, NIOUDP):
+                # dynamically configure an UDP tunnel on the VirtualBox adapter
+                yield from self._control_vm("nic{} generic UDPTunnel".format(adapter_number + 1))
+                yield from self._control_vm("nicproperty{} sport={}".format(adapter_number + 1, nio.lport))
+                yield from self._control_vm("nicproperty{} dest={}".format(adapter_number + 1, nio.rhost))
+                yield from self._control_vm("nicproperty{} dport={}".format(adapter_number + 1, nio.rport))
+                yield from self._control_vm("setlinkstate{} on".format(adapter_number + 1))
 
         adapter.add_nio(0, nio)
         log.info("Docker container '{name}' [{id}]: {nio} added to adapter {adapter_number}".format(
