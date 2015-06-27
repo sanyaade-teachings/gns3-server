@@ -78,6 +78,9 @@ class Docker(BaseManager):
         :rtype: list
         """
         images = []
+        # FIXME: catch exceptions from self._client.images()
+        # e.g. requests.exceptions.ConnectionError: UnixHTTPConnectionPool(host='localhost', port=None): Max retries exceeded with url: /v1.18/images/json?only_ids=0&all=0 (Caused by <class 'PermissionError'>: [Errno 13] Permission denied)
+        # because I did not reboot after putting my login in the docker group: https://github.com/docker/docker/issues/5314
         for image in self._client.images():
             for tag in image['RepoTags']:
                 images.append({'imagename': tag})

@@ -1,8 +1,6 @@
-#!/bin/bash
-
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2013 GNS3 Technologies Inc.
+# Copyright (C) 2015 GNS3 Technologies Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,25 +15,32 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Bash shell script for generating self-signed certs.
-# The certicate is automaticaly put in your GNS3 config
 
-DST_DIR="$HOME/.config/GNS3/ssl"
-OLD_DIR=`pwd`
-
-fail_if_error() {
-  [ $1 != 0 ] && {
-    unset PASSPHRASE
-    cd $OLD_DIR
-    exit 10
-  }
-}
+import pytest
+import tempfile
+import os
+import stat
+import asyncio
 
 
-mkdir -p $DST_DIR
-fail_if_error $?
-cd $DST_DIR
+from unittest.mock import patch
 
-SUBJ="/C=CA/ST=Alberta/O=GNS3SELF/localityName=Calgary/commonName=localhost/organizationalUnitName=GNS3Server/emailAddress=gns3cert@gns3.com"
+from gns3server.modules.vmware import VMware
+from tests.utils import asyncio_patch
 
-openssl req -nodes -new -x509 -keyout server.key -out server.cert -subj "$SUBJ"
+
+@pytest.fixture(scope="module")
+def manager(port_manager):
+    m = VMware.instance()
+    m.port_manager = port_manager
+    return m
+
+
+def test_parse_vmware_file(manager, tmpdir):
+    path = str(tmpdir / "test.vmx")
+    with open(path, "w+") as f:
+        f.write('displayname = "GNS3 VM"\nguestOS = "ubuntu-64"')
+
+    vmx = VMware.parse_vmware_file(path)
+    assert vmx["displayname"] == "GNS3 VM"
+    assert vmx["guestos"] == "ubuntu-64"

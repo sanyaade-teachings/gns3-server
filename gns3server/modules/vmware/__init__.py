@@ -74,7 +74,14 @@ class VMware(BaseManager):
         vmrun_path = self.config.get_section_config("VMware").get("vmrun_path")
         if not vmrun_path:
             if sys.platform.startswith("win"):
-                pass  # TODO: use registry to find vmrun or search for default location
+                vmrun_path = shutil.which("vmrun")
+                if vmrun_path is None:
+                    vmrun_ws = os.path.expandvars(r"%PROGRAMFILES(X86)%\VMware\VMware Workstation\vmrun.exe")
+                    vmrun_vix = os.path.expandvars(r"%PROGRAMFILES(X86)%\VMware\VMware VIX\vmrun.exe")
+                    if os.path.exists(vmrun_ws):
+                        vmrun_path = vmrun_ws
+                    elif os.path.exist(vmrun_vix):
+                        vmrun_path = vmrun_vix
             elif sys.platform.startswith("darwin"):
                 vmrun_path = "/Applications/VMware Fusion.app/Contents/Library/vmrun"
             else:
@@ -177,7 +184,8 @@ class VMware(BaseManager):
 
             command = [vmrun_path, "-T", host_type, subcommand]
             command.extend(args)
-            log.debug("Executing vmrun with command: {}".format(command))
+            command_string = " ".join(command)
+            log.info("Executing vmrun with command: {}".format(command_string))
             try:
                 process = yield from asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             except (OSError, subprocess.SubprocessError) as e:
@@ -210,7 +218,7 @@ class VMware(BaseManager):
             for line in f.read().splitlines():
                 try:
                     key, value = line.split('=', 1)
-                    pairs[key.strip()] = value.strip('" ')
+                    pairs[key.strip().lower()] = value.strip('" ')
                 except ValueError:
                     continue
         return pairs
@@ -268,16 +276,16 @@ class VMware(BaseManager):
                         vm_entry, variable_name = key.split('.', 1)
                     except ValueError:
                         continue
-                    if not vm_entry in vm_entries:
+                    if vm_entry not in vm_entries:
                         vm_entries[vm_entry] = {}
                     vm_entries[vm_entry][variable_name.strip()] = value
         except OSError as e:
             log.warning("Could not read VMware inventory file {}: {}".format(inventory_path, e))
 
         for vm_settings in vm_entries.values():
-            if "DisplayName" in vm_settings and "config" in vm_settings:
-                log.debug('Found VM named "{}" with VMX file "{}"'.format(vm_settings["DisplayName"], vm_settings["config"]))
-                vms.append({"vmname": vm_settings["DisplayName"], "vmx_path": vm_settings["config"]})
+            if "displayname" in vm_settings and "config" in vm_settings:
+                log.debug('Found VM named "{}" with VMX file "{}"'.format(vm_settings["displayname"], vm_settings["config"]))
+                vms.append({"vmname": vm_settings["displayname"], "vmx_path": vm_settings["config"]})
         return vms
 
     def _get_vms_from_directory(self, directory):
@@ -297,9 +305,9 @@ class VMware(BaseManager):
                     log.debug('Reading VMware VMX file "{}"'.format(vmx_path))
                     try:
                         pairs = self.parse_vmware_file(vmx_path)
-                        if "displayName" in pairs:
-                            log.debug('Found VM named "{}"'.format(pairs["displayName"]))
-                            vms.append({"vmname": pairs["displayName"], "vmx_path": vmx_path})
+                        if "displayname" in pairs:
+                            log.debug('Found VM named "{}"'.format(pairs["displayname"]))
+                            vms.append({"vmname": pairs["displayname"], "vmx_path": vmx_path})
                     except OSError as e:
                         log.warning('Could not read VMware VMX file "{}": {}'.format(vmx_path, e))
                         continue
@@ -333,7 +341,7 @@ class VMware(BaseManager):
         elif sys.platform.startswith("darwin"):
             return os.path.expanduser("~/Library/Preferences/VMware Fusion/preferences")
         else:
-            return  os.path.expanduser("~/.vmware/preferences")
+            return os.path.expanduser("~/.vmware/preferences")
 
     @staticmethod
     def get_vmware_default_vm_path():

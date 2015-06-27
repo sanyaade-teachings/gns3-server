@@ -53,20 +53,40 @@ QEMU_CREATE_SCHEMA = {
             "maximum": 65535,
             "type": ["integer", "null"]
         },
+        "console_type": {
+            "description": "console type",
+            "enum": ["telnet", "vnc"]
+        },
         "hda_disk_image": {
             "description": "QEMU hda disk image path",
-            "type": ["string", "null"],
+            "type": "string",
+        },
+        "hda_disk_image_md5sum": {
+            "description": "QEMU hda disk image checksum",
+            "type": ["string", "null"]
         },
         "hdb_disk_image": {
             "description": "QEMU hdb disk image path",
+            "type": "string",
+        },
+        "hdb_disk_image_md5sum": {
+            "description": "QEMU hdb disk image checksum",
             "type": ["string", "null"],
         },
         "hdc_disk_image": {
             "description": "QEMU hdc disk image path",
+            "type": "string",
+        },
+        "hdc_disk_image_md5sum": {
+            "description": "QEMU hdc disk image checksum",
             "type": ["string", "null"],
         },
         "hdd_disk_image": {
             "description": "QEMU hdd disk image path",
+            "type": "string",
+        },
+        "hdd_disk_image_md5sum": {
+            "description": "QEMU hdd disk image checksum",
             "type": ["string", "null"],
         },
         "ram": {
@@ -92,10 +112,18 @@ QEMU_CREATE_SCHEMA = {
         },
         "initrd": {
             "description": "QEMU initrd path",
+            "type": "string",
+        },
+        "initrd_md5sum": {
+            "description": "QEMU initrd path",
             "type": ["string", "null"],
         },
         "kernel_image": {
             "description": "QEMU kernel image path",
+            "type": "string",
+        },
+        "kernel_image_md5sum": {
+            "description": "QEMU kernel image checksum",
             "type": ["string", "null"],
         },
         "kernel_command_line": {
@@ -108,10 +136,6 @@ QEMU_CREATE_SCHEMA = {
         },
         "acpi_shutdown": {
             "description": "ACPI shutdown support",
-            "type": ["boolean", "null"],
-        },
-        "kvm": {
-            "description": "KVM support",
             "type": ["boolean", "null"],
         },
         "cpu_throttling": {
@@ -164,20 +188,40 @@ QEMU_UPDATE_SCHEMA = {
             "maximum": 65535,
             "type": ["integer", "null"]
         },
+        "console_type": {
+            "description": "console type",
+            "enum": ["telnet", "vnc"]
+        },
         "hda_disk_image": {
             "description": "QEMU hda disk image path",
-            "type": ["string", "null"],
+            "type": "string",
+        },
+        "hda_disk_image_md5sum": {
+            "description": "QEMU hda disk image checksum",
+            "type": ["string", "null"]
         },
         "hdb_disk_image": {
             "description": "QEMU hdb disk image path",
+            "type": "string",
+        },
+        "hdb_disk_image_md5sum": {
+            "description": "QEMU hdb disk image checksum",
             "type": ["string", "null"],
         },
         "hdc_disk_image": {
             "description": "QEMU hdc disk image path",
+            "type": "string",
+        },
+        "hdc_disk_image_md5sum": {
+            "description": "QEMU hdc disk image checksum",
             "type": ["string", "null"],
         },
         "hdd_disk_image": {
             "description": "QEMU hdd disk image path",
+            "type": "string",
+        },
+        "hdd_disk_image_md5sum": {
+            "description": "QEMU hdd disk image checksum",
             "type": ["string", "null"],
         },
         "ram": {
@@ -203,10 +247,18 @@ QEMU_UPDATE_SCHEMA = {
         },
         "initrd": {
             "description": "QEMU initrd path",
+            "type": "string",
+        },
+        "initrd_md5sum": {
+            "description": "QEMU initrd path",
             "type": ["string", "null"],
         },
         "kernel_image": {
             "description": "QEMU kernel image path",
+            "type": "string",
+        },
+        "kernel_image_md5sum": {
+            "description": "QEMU kernel image checksum",
             "type": ["string", "null"],
         },
         "kernel_command_line": {
@@ -219,10 +271,6 @@ QEMU_UPDATE_SCHEMA = {
         },
         "acpi_shutdown": {
             "description": "ACPI shutdown support",
-            "type": ["boolean", "null"],
-        },
-        "kvm": {
-            "description": "KVM support",
             "type": ["boolean", "null"],
         },
         "cpu_throttling": {
@@ -282,17 +330,37 @@ QEMU_OBJECT_SCHEMA = {
             "description": "QEMU hda disk image path",
             "type": "string",
         },
+        "hda_disk_image_md5sum": {
+            "description": "QEMU hda disk image checksum",
+            "type": ["string", "null"]
+        },
         "hdb_disk_image": {
             "description": "QEMU hdb disk image path",
             "type": "string",
+        },
+        "hdb_disk_image_md5sum": {
+            "description": "QEMU hdb disk image checksum",
+            "type": ["string", "null"],
         },
         "hdc_disk_image": {
             "description": "QEMU hdc disk image path",
             "type": "string",
         },
+        "hdc_disk_image_md5sum": {
+            "description": "QEMU hdc disk image checksum",
+            "type": ["string", "null"],
+        },
         "hdd_disk_image": {
             "description": "QEMU hdd disk image path",
             "type": "string",
+        },
+        "hdd_disk_image_md5sum": {
+            "description": "QEMU hdd disk image checksum",
+            "type": ["string", "null"],
+        },
+        "vm_directory": {
+            "decription": "Path to the VM working directory",
+            "type": "string"
         },
         "ram": {
             "description": "amount of RAM in MB",
@@ -321,13 +389,25 @@ QEMU_OBJECT_SCHEMA = {
             "maximum": 65535,
             "type": "integer"
         },
+        "console_type": {
+            "description": "console type",
+            "enum": ["telnet", "vnc"]
+        },
         "initrd": {
             "description": "QEMU initrd path",
             "type": "string",
         },
+        "initrd_md5sum": {
+            "description": "QEMU initrd path",
+            "type": ["string", "null"],
+        },
         "kernel_image": {
             "description": "QEMU kernel image path",
             "type": "string",
+        },
+        "kernel_image_md5sum": {
+            "description": "QEMU kernel image checksum",
+            "type": ["string", "null"],
         },
         "kernel_command_line": {
             "description": "QEMU kernel command line",
@@ -340,10 +420,6 @@ QEMU_OBJECT_SCHEMA = {
         "acpi_shutdown": {
             "description": "ACPI shutdown support",
             "type": "boolean",
-        },
-        "kvm": {
-            "description": "KVM support",
-            "type": ["boolean", "null"],
         },
         "cpu_throttling": {
             "description": "Percentage of CPU allowed for QEMU",
@@ -366,10 +442,11 @@ QEMU_OBJECT_SCHEMA = {
         },
     },
     "additionalProperties": False,
-    "required": ["vm_id", "project_id", "name", "qemu_path", "platform", "hda_disk_image", "hdb_disk_image",
-                 "hdc_disk_image", "hdd_disk_image", "ram", "adapters", "adapter_type", "mac_address", "console",
-                 "initrd", "kernel_image", "kernel_command_line", "legacy_networking", "acpi_shutdown", "kvm",
-                 "cpu_throttling", "process_priority", "options"]
+    "required": ["vm_id", "project_id", "name", "qemu_path", "platform", "console_type", "hda_disk_image", "hdb_disk_image",
+                 "hdc_disk_image", "hdd_disk_image", "hda_disk_image_md5sum", "hdb_disk_image_md5sum",
+                 "hdc_disk_image_md5sum", "hdd_disk_image_md5sum", "ram", "adapters", "adapter_type", "mac_address",
+                 "console", "initrd", "kernel_image", "initrd_md5sum", "kernel_image_md5sum", "kernel_command_line",
+                 "legacy_networking", "acpi_shutdown", "cpu_throttling", "process_priority", "options","vm_directory"]
 }
 
 QEMU_BINARY_LIST_SCHEMA = {

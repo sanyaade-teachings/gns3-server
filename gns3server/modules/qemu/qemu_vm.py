@@ -38,6 +38,7 @@ from ..nios.nio_nat import NIONAT
 from ..base_vm import BaseVM
 from ...schemas.qemu import QEMU_OBJECT_SCHEMA, QEMU_PLATFORMS
 from ...utils.asyncio import monitor_process
+from ...utils.images import md5sum
 
 import logging
 log = logging.getLogger(__name__)
@@ -90,6 +91,7 @@ class QemuVM(BaseVM):
         self._hdd_disk_image = ""
         self._mac_address = ""
         self._options = ""
+        self._console_type = "telnet"
         self._ram = 256
         self._ethernet_adapters = []
         self._adapter_type = "e1000"
@@ -97,7 +99,6 @@ class QemuVM(BaseVM):
         self._kernel_image = ""
         self._kernel_command_line = ""
         self._legacy_networking = False
-        self._kvm = True
         self._acpi_shutdown = False
         self._cpu_throttling = 0  # means no CPU throttling
         self._process_priority = "low"
@@ -392,30 +393,6 @@ class QemuVM(BaseVM):
         self._acpi_shutdown = acpi_shutdown
 
     @property
-    def kvm(self):
-        """
-        Returns either this QEMU VM uses KVM acceleration.
-
-        :returns: boolean
-        """
-
-        return self._kvm
-
-    @kvm.setter
-    def kvm(self, kvm):
-        """
-        Sets either this QEMU VM uses KVM acceleration.
-
-        :param kvm: boolean
-        """
-
-        if kvm:
-            log.info('QEMU VM "{name}" [{id}] has enabled KVM acceleration'.format(name=self._name, id=self._id))
-        else:
-            log.info('QEMU VM "{name}" [{id}] has disabled KVM acceleration'.format(name=self._name, id=self._id))
-        self._kvm = kvm
-
-    @property
     def cpu_throttling(self):
         """
         Returns the percentage of CPU allowed.
@@ -506,11 +483,35 @@ class QemuVM(BaseVM):
         log.info('QEMU VM "{name}" [{id}] has set the QEMU options to {options}'.format(name=self._name,
                                                                                         id=self._id,
                                                                                         options=options))
-        if "-enable-kvm" in options:
-            self.kvm = True
-            options = options.replace("-enable-kvm", "")
 
         self._options = options.strip()
+
+    @property
+    def console_type(self):
+        """
+        Returns the console type for this QEMU VM.
+
+        :returns: console type (string)
+        """
+
+        return self._console_type
+
+    @console_type.setter
+    def console_type(self, console_type):
+        """
+        Sets the console type for this QEMU VM.
+
+        :param console_type: console type (string)
+        """
+
+        log.info('QEMU VM "{name}" [{id}] has set the console type to {console_type}'.format(name=self._name,
+                                                                                             id=self._id,
+                                                                                             console_type=console_type))
+
+        if self.is_running() and console_type != self._console_type:
+            raise QemuError("Sorry, changing the console type on a running Qemu VM is not supported.")
+
+        self._console_type = console_type
 
     @property
     def initrd(self):
@@ -697,8 +698,9 @@ class QemuVM(BaseVM):
                     raise QemuError("Could not find free port for the Qemu monitor: {}".format(e))
 
             self._command = yield from self._build_command()
+            command_string = " ".join(self._command)
             try:
-                log.info("Starting QEMU: {}".format(self._command))
+                log.info("Starting QEMU with: {}".format(command_string))
                 self._stdout_file = os.path.join(self.working_dir, "qemu.log")
                 log.info("logging to {}".format(self._stdout_file))
                 with open(self._stdout_file, "w", encoding="utf-8") as fd:
@@ -1001,6 +1003,14 @@ class QemuVM(BaseVM):
         else:
             return []
 
+    def _vnc_options(self):
+
+        if self._console:
+            vnc_port = self._console - 5900
+            return ["-vnc", "{}:{}".format(self._manager.port_manager.console_host, vnc_port)]
+        else:
+            return []
+
     def _monitor_options(self):
 
         if self._monitor:
@@ -1192,19 +1202,26 @@ class QemuVM(BaseVM):
         command = [self.qemu_path]
         command.extend(["-name", self._name])
         command.extend(["-m", str(self._ram)])
-        if sys.platform.startswith("linux") and self._kvm:
+        if sys.platform.startswith("linux") and self.manager.config.get_section_config("Qemu").getboolean("enable_kvm", True):
+            if not os.path.exists("/dev/kvm"):
+                raise QemuError("KVM acceleration cannot be used (/dev/kvm doesn't exist)")
             command.extend(["-enable-kvm"])
         disk_options = yield from self._disk_options()
         command.extend(disk_options)
         command.extend(self._linux_boot_options())
-        command.extend(self._serial_options())
+        if self._console_type == "telnet":
+            command.extend(self._serial_options())
+        elif self._console_type == "vnc":
+            command.extend(self._vnc_options())
+        else:
+            raise QemuError("Console type {} is unknown".format(self._console_type))
         command.extend(self._monitor_options())
         additional_options = self._options.strip()
         if additional_options:
             try:
                 command.extend(shlex.split(additional_options))
             except ValueError as e:
-                QemuError("Invalid additional options: {} error {}".format(additional_options, e))
+                raise QemuError("Invalid additional options: {} error {}".format(additional_options, e))
         command.extend(self._network_options())
         command.extend(self._graphic())
         return command
@@ -1212,18 +1229,29 @@ class QemuVM(BaseVM):
     def __json__(self):
         answer = {
             "project_id": self.project.id,
-            "vm_id": self.id
+            "vm_id": self.id,
+            "vm_directory": self.working_dir
         }
         # Qemu has a long list of options. The JSON schema is the single source of information
         for field in QEMU_OBJECT_SCHEMA["required"]:
             if field not in answer:
-                answer[field] = getattr(self, field)
+                try:
+                    answer[field] = getattr(self, field)
+                except AttributeError:
+                    pass
 
         answer["hda_disk_image"] = self.manager.get_relative_image_path(self._hda_disk_image)
+        answer["hda_disk_image_md5sum"] = md5sum(self._hda_disk_image)
         answer["hdb_disk_image"] = self.manager.get_relative_image_path(self._hdb_disk_image)
+        answer["hdb_disk_image_md5sum"] = md5sum(self._hdb_disk_image)
         answer["hdc_disk_image"] = self.manager.get_relative_image_path(self._hdc_disk_image)
+        answer["hdc_disk_image_md5sum"] = md5sum(self._hdc_disk_image)
         answer["hdd_disk_image"] = self.manager.get_relative_image_path(self._hdd_disk_image)
+        answer["hdd_disk_image_md5sum"] = md5sum(self._hdd_disk_image)
         answer["initrd"] = self.manager.get_relative_image_path(self._initrd)
+        answer["initrd_md5sum"] = md5sum(self._initrd)
+
         answer["kernel_image"] = self.manager.get_relative_image_path(self._kernel_image)
+        answer["kernel_image_md5sum"] = md5sum(self._kernel_image)
 
         return answer
