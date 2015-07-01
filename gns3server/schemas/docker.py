@@ -116,7 +116,7 @@ DOCKER_OBJECT_SCHEMA = {
             "type": "string",
             "minLength": 1,
         },
-        "id": {
+        "vm_id": {
             "description": "Docker container instance UUID",
             "type": "string",
             "minLength": 36,
@@ -155,5 +155,5 @@ DOCKER_OBJECT_SCHEMA = {
         },
     },
     "additionalProperties": False,
-    "required": ["id", "project_id"]
+    "required": ["vm_id", "project_id"]
 }

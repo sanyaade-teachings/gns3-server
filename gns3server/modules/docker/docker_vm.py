@@ -28,8 +28,13 @@ import json
 import socket
 import asyncio
 import docker
+import netifaces
+import subprocess
+import configparser
 from docker.utils import create_host_config
 
+from gns3server.utils.asyncio import wait_for_process_termination
+from gns3server.utils.asyncio import monitor_process
 from pkg_resources import parse_version
 from .docker_error import DockerError
 from ..base_vm import BaseVM
@@ -56,6 +61,8 @@ class Container(BaseVM):
         self._image = image
         self._temporary_directory = None
         self._ethernet_adapters = []
+        self._ubridge_process = None
+        self._ubridge_stdout_file = ""
 
         log.debug(
             "{module}: {name} [{image}] initialized.".format(
@@ -66,7 +73,7 @@ class Container(BaseVM):
     def __json__(self):
         return {
             "name": self._name,
-            "id": self._id,
+            "vm_id": self._id,
             "cid": self._cid,
             "project_id": self._project.id,
             "image": self._image,
@@ -114,9 +121,154 @@ class Container(BaseVM):
             name=self._name, id=self._id))
         return True
 
+    def _update_ubridge_config(self):
+        """Updates the ubrige.ini file."""
+
+        ubridge_ini = os.path.join(self.working_dir, "ubridge.ini")
+        config = configparser.ConfigParser()
+        for adapter_number in range(0, self._adapters):
+            nio = self._ethernet_adapters[adapter_number].get_nio(0)
+            if nio:
+                bridge_name = "bridge{}".format(adapter_number)
+
+                vnet = "ethernet{}.vnet".format(adapter_number)
+                if vnet not in self._vmx_pairs:
+                    continue
+
+                vmnet_interface = os.path.basename(self._vmx_pairs[vnet])
+                if sys.platform.startswith("linux"):
+                    config[bridge_name] = {"source_linux_raw": vmnet_interface}
+                elif sys.platform.startswith("win"):
+                    windows_interfaces = self.manager.get_vmnet_interfaces()
+                    npf = None
+                    for interface in windows_interfaces:
+                        if "netcard" in interface and vmnet_interface in interface["netcard"]:
+                            npf = interface["id"]
+                        elif vmnet_interface in interface["name"]:
+                            npf = interface["id"]
+                    if npf:
+                        config[bridge_name] = {"source_ethernet": npf}
+                    else:
+                        raise DockerError(
+                            "Could not find NPF id for VMnet interface {}".format(
+                                vmnet_interface))
+                else:
+                    config[bridge_name] = {"source_ethernet": vmnet_interface}
+
+                if isinstance(nio, NIOUDP):
+                    udp_tunnel_info = {"destination_udp": "{lport}:{rhost}:{rport}".format(lport=nio.lport,
+                                                                                           rhost=nio.rhost,
+                                                                                           rport=nio.rport)}
+                    config[bridge_name].update(udp_tunnel_info)
+
+                if nio.capturing:
+                    capture_info = {"pcap_file": "{pcap_file}".format(
+                        pcap_file=nio.pcap_output_file)}
+                    config[bridge_name].update(capture_info)
+        try:
+            with open(ubridge_ini, "w", encoding="utf-8") as config_file:
+                config.write(config_file)
+            log.info('Docker VM "{name}" [id={id}]: ubridge.ini updated'.format(
+                name=self._name, id=self._id))
+        except OSError as e:
+            raise DockerError("Could not create {}: {}".format(ubridge_ini, e))
+
+    @property
+    def ubridge_path(self):
+        """Returns the uBridge executable path.
+
+        :returns: path to uBridge
+        """
+        path = self._manager.config.get_section_config("Server").get(
+            "ubridge_path", "ubridge")
+        if path == "ubridge":
+            path = shutil.which("ubridge")
+        return path
+
+    @asyncio.coroutine
+    def _start_ubridge(self):
+        """Starts uBridge (handles connections to and from this Docker VM)."""
+
+        try:
+            command = [self.ubridge_path]
+            log.info("starting ubridge: {}".format(command))
+            self._ubridge_stdout_file = os.path.join(
+                self.working_dir, "ubridge.log")
+            log.info("logging to {}".format(self._ubridge_stdout_file))
+            os.system("touch %s/ubridge.ini" % self.working_dir)
+            with open(self._ubridge_stdout_file, "w", encoding="utf-8") as fd:
+                self._ubridge_process = yield from asyncio.create_subprocess_exec(
+                    *command,
+                    stdout=fd,
+                    stderr=subprocess.STDOUT,
+                    cwd=self.working_dir)
+
+                monitor_process(
+                    self._ubridge_process, self._termination_callback)
+            log.info("ubridge started PID={}".format(
+                self._ubridge_process.pid))
+        except (OSError, subprocess.SubprocessError) as e:
+            ubridge_stdout = self.read_ubridge_stdout()
+            log.error("Could not start ubridge: {}\n{}".format(
+                e, ubridge_stdout))
+            raise DockerError("Could not start ubridge: {}\n{}".format(
+                e, ubridge_stdout))
+
+    def _termination_callback(self, returncode):
+        """Called when the process has stopped.
+
+        :param returncode: Process returncode
+        """
+        log.info("uBridge process has stopped, return code: %d", returncode)
+
+    def is_ubridge_running(self):
+        """Checks if the ubridge process is running
+
+        :returns: True or False
+        :rtype: bool
+        """
+        if self._ubridge_process and self._ubridge_process.returncode is None:
+            return True
+        return False
+
+    def read_ubridge_stdout(self):
+        """
+        Reads the standard output of the uBridge process.
+        Only use when the process has been stopped or has crashed.
+        """
+
+        output = ""
+        if self._ubridge_stdout_file:
+            try:
+                with open(self._ubridge_stdout_file, "rb") as file:
+                    output = file.read().decode("utf-8", errors="replace")
+            except OSError as e:
+                log.warn("could not read {}: {}".format(
+                    self._ubridge_stdout_file, e))
+        return output
+
+    def _terminate_process_ubridge(self):
+        """Terminate the ubridge process if running."""
+
+        if self._ubridge_process:
+            log.info(
+                'Stopping uBridge process for Docker container "{}" PID={}'.format(
+                    self.name, self._ubridge_process.pid))
+            try:
+                self._ubridge_process.terminate()
+            # Sometime the process can already be dead when we garbage collect
+            except ProcessLookupError:
+                pass
+
     @asyncio.coroutine
     def start(self):
         """Starts this Docker container."""
+
+        ubridge_path = self.ubridge_path
+        if not ubridge_path or not os.path.isfile(ubridge_path):
+            raise DockerError("ubridge is necessary to start a Docker VM")
+        yield from self._start_ubridge()
+
         state = yield from self._get_container_state()
         if state == "paused":
             yield from self.unpause()
@@ -148,6 +300,20 @@ class Container(BaseVM):
     @asyncio.coroutine
     def stop(self):
         """Stops this Docker container."""
+
+        if self.is_ubridge_running():
+            self._terminate_process_ubridge()
+            try:
+                yield from wait_for_process_termination(
+                    self._ubridge_process, timeout=3)
+            except asyncio.TimeoutError:
+                if self._ubridge_process.returncode is None:
+                    log.warn(
+                        "uBridge process {} is still running... killing it".format(
+                            self._ubridge_process.pid))
+                    self._ubridge_process.kill()
+            self._ubridge_process = None
+
         state = yield from self._get_container_state()
         if state == "paused":
             yield from self.unpause()
@@ -204,6 +370,12 @@ class Container(BaseVM):
             name=self.name, id=self._cid))
         self._closed = True
 
+    def _reload_ubridge(self):
+        """Reloads ubridge."""
+        if self.is_ubridge_running():
+            self._update_ubridge_config()
+            os.kill(self._ubridge_process.pid, signal.SIGHUP)
+
     def adapter_add_nio_binding(self, adapter_number, nio):
         """Adds an adapter NIO binding.
 
@@ -217,22 +389,30 @@ class Container(BaseVM):
                 "Adapter {adapter_number} doesn't exist on Docker container '{name}'".format(
                     name=self.name, adapter_number=adapter_number))
 
-        state = yield from self._get_container_state()
-        if state == "running":
-            if isinstance(nio, NIOUDP):
-                # dynamically configure an UDP tunnel on the VirtualBox adapter
-                yield from self._control_vm("nic{} generic UDPTunnel".format(adapter_number + 1))
-                yield from self._control_vm("nicproperty{} sport={}".format(adapter_number + 1, nio.lport))
-                yield from self._control_vm("nicproperty{} dest={}".format(adapter_number + 1, nio.rhost))
-                yield from self._control_vm("nicproperty{} dport={}".format(adapter_number + 1, nio.rport))
-                yield from self._control_vm("setlinkstate{} on".format(adapter_number + 1))
-
+        if nio and isinstance(nio, NIOUDP):
+            ifcs = netifaces.interfaces()
+            for index in range(128):
+                ifcs = netifaces.interfaces()
+                if "gns3-veth{}ext".format(index) not in ifcs:
+                    adapter.ifc = "eth{}".format(str(index))
+                    adapter.host_ifc = "gns3-veth{}ext".format(str(index))
+                    adapter.guest_ifc = "gns3-veth{}int".format(str(index))
+                    break
+            if not hasattr(adapter, "ifc"):
+                raise DockerError(
+                    "Adapter {adapter_number} couldn't allocate interface on Docker container '{name}'".format(
+                        name=self.name, adapter_number=adapter_number))
+            os.system("sudo ip link add {} type veth peer name {}".format(
+                adapter.host_ifc, adapter.guest_ifc))
         adapter.add_nio(0, nio)
-        log.info("Docker container '{name}' [{id}]: {nio} added to adapter {adapter_number}".format(
-            name=self.name,
-            id=self._id,
-            nio=nio,
-            adapter_number=adapter_number))
+        self._reload_ubridge()
+        log.info(
+            "Docker container '{name}' [{id}]: {nio} added to adapter {adapter_number}".format(
+                name=self.name,
+                id=self._id,
+                nio=nio,
+                adapter_number=adapter_number))
+        return nio
 
     def adapter_remove_nio_binding(self, adapter_number):
         """Removes an adapter NIO binding.
@@ -248,12 +428,13 @@ class Container(BaseVM):
             raise DockerError(
                 "Adapter {adapter_number} doesn't exist on Docker container '{name}'".format(
                     name=self.name, adapter_number=adapter_number))
-
+        try:
+            os.system("sudo ip link del {}".format(adapter.host_ifc))
+        except:
+            pass
         nio = adapter.get_nio(0)
-        if isinstance(nio, NIOUDP):
-            self.manager.port_manager.release_udp_port(
-                nio.lport, self._project)
         adapter.remove_nio(0)
+        self._reload_ubridge()
 
         log.info("Docker container '{name}' [{id}]: {nio} removed from adapter {adapter_number}".format(
             name=self.name, id=self.id, nio=nio,
@@ -284,3 +465,17 @@ class Container(BaseVM):
                 name=self._name,
                 id=self._id,
                 adapters=adapters))
+
+    def get_namespace(self):
+        result = yield from self.manager.execute(
+            "inspect_container", {"container": self._cid})
+        return int(result['State']['Pid'])
+
+    def change_netnamespace(self, adapter):
+        ns = self.get_namespace()
+        os.system("sudo rm -f /var/run/netns/%s" % ns)
+        os.system("sudo ln -s /proc/{0}/ns/net /var/run/netns/{0}".format(ns))
+        os.system("sudo ip link set {guest_ifc} netns {netns}".format(
+            netns=ns, guest_ifc=adapter.guest_ifc))
+        os.system("sudo ip netns exec {netns} ip link set {guest_ifc} name {ifc}".format(
+            netns=ns, guest_ifc=adapter.guest_ifc, ifc=adapter.ifc))

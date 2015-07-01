@@ -118,3 +118,38 @@ class Docker(BaseManager):
                     text="Project ID {} doesn't belong to container {}".format(
                         project_id, container.name))
         return container
+
+    # def create_nio(self, adapter_number, nio_settings):
+    #     """Creates a new NIO.
+
+    #     :param adapter_number: adapter number to create NIO
+    #     :param nio_settings: information to create the NIO
+
+    #     :returns: a NIO object
+    #     """
+    #     nio = None
+    #     if nio_settings["type"] == "nio_udp":
+    #         host_device = "gns3veth%sh" % int(adapter_number)
+    #         container_device = "gns3veth%sc" % int(adapter_number)
+    #         lport = nio_settings["lport"]
+    #         rhost = nio_settings["rhost"]
+    #         rport = nio_settings["rport"]
+    #         try:
+    #             info = socket.getaddrinfo(
+    #                 rhost, rport, socket.AF_UNSPEC, socket.SOCK_DGRAM, 0,
+    #                 socket.AI_PASSIVE)
+    #             if not info:
+    #                 raise aiohttp.web.HTTPInternalServerError(
+    #                     text="getaddrinfo returns an empty list on {}:{}".format(
+    #                         rhost, rport))
+    #             for res in info:
+    #                 af, socktype, proto, _, sa = res
+    #                 with socket.socket(af, socktype, proto) as sock:
+    #                     sock.connect(sa)
+    #         except OSError as err:
+    #             raise aiohttp.web.HTTPInternalServerError(
+    #                 text="Could not create an UDP connection to {}:{}: {}".format(
+    #                     rhost, rport, err))
+    #         nio = NIOGenericEthernet(ethernet_device)
+    #     assert nio is not None
+    #     return nio

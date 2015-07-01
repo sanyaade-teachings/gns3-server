@@ -211,7 +211,11 @@ class DockerHandler:
         if nio_type not in ("nio_udp"):
             raise HTTPConflict(
                 text="NIO of type {} is not supported".format(nio_type))
-        nio = docker_manager.create_nio(False, request.json)
+        nio = docker_manager.create_nio(
+            int(request.match_info["adapter_number"]), request.json)
+        adapter = container._ethernet_adapters[
+            int(request.match_info["adapter_number"])
+        ]
         container.adapter_add_nio_binding(
             int(request.match_info["adapter_number"]), nio)
         response.set_status(201)
