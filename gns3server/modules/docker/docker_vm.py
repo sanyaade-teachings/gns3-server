@@ -31,6 +31,8 @@ import docker
 import netifaces
 import subprocess
 import configparser
+import signal
+
 from docker.utils import create_host_config
 
 from gns3server.utils.asyncio import wait_for_process_termination
@@ -126,39 +128,21 @@ class Container(BaseVM):
 
         ubridge_ini = os.path.join(self.working_dir, "ubridge.ini")
         config = configparser.ConfigParser()
-        for adapter_number in range(0, self._adapters):
-            nio = self._ethernet_adapters[adapter_number].get_nio(0)
+        for adapter_number in range(0, self.adapters):
+            adapter = self._ethernet_adapters[adapter_number]
+            nio = adapter.get_nio(0)
             if nio:
                 bridge_name = "bridge{}".format(adapter_number)
 
-                vnet = "ethernet{}.vnet".format(adapter_number)
-                if vnet not in self._vmx_pairs:
-                    continue
-
-                vmnet_interface = os.path.basename(self._vmx_pairs[vnet])
                 if sys.platform.startswith("linux"):
-                    config[bridge_name] = {"source_linux_raw": vmnet_interface}
-                elif sys.platform.startswith("win"):
-                    windows_interfaces = self.manager.get_vmnet_interfaces()
-                    npf = None
-                    for interface in windows_interfaces:
-                        if "netcard" in interface and vmnet_interface in interface["netcard"]:
-                            npf = interface["id"]
-                        elif vmnet_interface in interface["name"]:
-                            npf = interface["id"]
-                    if npf:
-                        config[bridge_name] = {"source_ethernet": npf}
-                    else:
-                        raise DockerError(
-                            "Could not find NPF id for VMnet interface {}".format(
-                                vmnet_interface))
-                else:
-                    config[bridge_name] = {"source_ethernet": vmnet_interface}
+                    config[bridge_name] = {"source_linux_raw": adapter.host_ifc}
 
                 if isinstance(nio, NIOUDP):
-                    udp_tunnel_info = {"destination_udp": "{lport}:{rhost}:{rport}".format(lport=nio.lport,
-                                                                                           rhost=nio.rhost,
-                                                                                           rport=nio.rport)}
+                    udp_tunnel_info = {
+                        "destination_udp": "{lport}:{rhost}:{rport}".format(
+                            lport=nio.lport,
+                            rhost=nio.rhost,
+                            rport=nio.rport)}
                     config[bridge_name].update(udp_tunnel_info)
 
                 if nio.capturing:
@@ -168,8 +152,9 @@ class Container(BaseVM):
         try:
             with open(ubridge_ini, "w", encoding="utf-8") as config_file:
                 config.write(config_file)
-            log.info('Docker VM "{name}" [id={id}]: ubridge.ini updated'.format(
-                name=self._name, id=self._id))
+            log.info(
+                'Docker VM "{name}" [id={id}]: ubridge.ini updated'.format(
+                    name=self._name, id=self._id))
         except OSError as e:
             raise DockerError("Could not create {}: {}".format(ubridge_ini, e))
 
