@@ -389,6 +389,9 @@ class Container(BaseVM):
                         name=self.name, adapter_number=adapter_number))
             os.system("sudo ip link add {} type veth peer name {}".format(
                 adapter.host_ifc, adapter.guest_ifc))
+            if self.is_running():
+                self.change_netnamespace(adapter)
+
         adapter.add_nio(0, nio)
         self._reload_ubridge()
         log.info(
