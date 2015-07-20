@@ -150,7 +150,7 @@ class Container(BaseVM):
                         pcap_file=nio.pcap_output_file)}
                     config[bridge_name].update(capture_info)
         try:
-            with open(ubridge_ini, "w", encoding="utf-8") as config_file:
+            with open(ubridge_ini, "w", encoding="utf-8") as config_file: 
                 config.write(config_file)
             log.info(
                 'Docker VM "{name}" [id={id}]: ubridge.ini updated'.format(
@@ -173,8 +173,8 @@ class Container(BaseVM):
     @asyncio.coroutine
     def _start_ubridge(self):
         """Starts uBridge (handles connections to and from this Docker VM)."""
-
         try:
+            self._update_ubridge_config()
             command = [self.ubridge_path]
             log.info("starting ubridge: {}".format(command))
             self._ubridge_stdout_file = os.path.join(
