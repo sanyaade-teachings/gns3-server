@@ -206,6 +206,7 @@ class IOUVM(BaseVM):
 
         iou_vm_info = {"name": self.name,
                        "vm_id": self.id,
+                       "vm_directory": self.working_dir,
                        "console": self._console,
                        "project_id": self.project.id,
                        "path": self.path,
@@ -535,6 +536,8 @@ class IOUVM(BaseVM):
         self._terminate_process_iou()
         self._terminate_process_iouyap()
         self._ioucon_thread_stop_event.set()
+        if returncode != 0:
+            self.project.emit("log.error", {"message": "IOU process has stopped, return code: {}\n{}".format(returncode, self.read_iou_stdout())})
 
     def _rename_nvram_file(self):
         """

@@ -26,6 +26,7 @@ import shutil
 import asyncio
 import subprocess
 import logging
+import codecs
 
 from collections import OrderedDict
 from gns3server.utils.interfaces import interfaces
@@ -80,7 +81,7 @@ class VMware(BaseManager):
                     vmrun_vix = os.path.expandvars(r"%PROGRAMFILES(X86)%\VMware\VMware VIX\vmrun.exe")
                     if os.path.exists(vmrun_ws):
                         vmrun_path = vmrun_ws
-                    elif os.path.exist(vmrun_vix):
+                    elif os.path.exists(vmrun_vix):
                         vmrun_path = vmrun_vix
             elif sys.platform.startswith("darwin"):
                 vmrun_path = "/Applications/VMware Fusion.app/Contents/Library/vmrun"
@@ -214,7 +215,27 @@ class VMware(BaseManager):
         """
 
         pairs = OrderedDict()
-        with open(path, encoding="utf-8") as f:
+        encoding = "utf-8"
+        # get the first line to read the .encoding value
+        with open(path, encoding=encoding) as f:
+            line = f.readline()
+            if line.startswith("#!"):
+                # skip the shebang
+                line = f.readline()
+            try:
+                key, value = line.split('=', 1)
+                if key.strip().lower() == ".encoding":
+                    file_encoding = value.strip('" ')
+                    try:
+                        codecs.lookup(file_encoding)
+                        encoding = file_encoding
+                    except LookupError:
+                        log.warning("Invalid file encoding detected in '{}': {}".format(path, file_encoding))
+            except ValueError:
+                log.warning("Couldn't find file encoding in {}, using {}...".format(path, encoding))
+
+        # read the file with the correct encoding
+        with open(path, encoding=encoding, errors="ignore") as f:
             for line in f.read().splitlines():
                 try:
                     key, value = line.split('=', 1)
@@ -232,7 +253,15 @@ class VMware(BaseManager):
         :param pairs: settings to write
         """
 
-        with open(path, "w", encoding="utf-8") as f:
+        encoding = "utf-8"
+        if ".encoding" in pairs:
+            file_encoding = pairs[".encoding"]
+            try:
+                codecs.lookup(file_encoding)
+                encoding = file_encoding
+            except LookupError:
+                log.warning("Invalid file encoding detected in '{}': {}".format(path, file_encoding))
+        with open(path, "w", encoding=encoding, errors="ignore") as f:
             for key, value in pairs.items():
                 entry = '{} = "{}"\n'.format(key, value)
                 f.write(entry)
@@ -246,7 +275,15 @@ class VMware(BaseManager):
         :param pairs: settings to write
         """
 
-        with open(path, "w", encoding="utf-8") as f:
+        encoding = "utf-8"
+        if ".encoding" in pairs:
+            file_encoding = pairs[".encoding"]
+            try:
+                codecs.lookup(file_encoding)
+                encoding = file_encoding
+            except LookupError:
+                log.warning("Invalid file encoding detected in '{}': {}".format(path, file_encoding))
+        with open(path, "w", encoding=encoding, errors="ignore") as f:
             if sys.platform.startswith("linux"):
                 # write the shebang on the first line on Linux
                 vmware_path = shutil.which("vmware")

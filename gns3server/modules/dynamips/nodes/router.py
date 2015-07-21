@@ -131,6 +131,7 @@ class Router(BaseVM):
 
         router_info = {"name": self.name,
                        "vm_id": self.id,
+                       "vm_directory": os.path.join(self.project.module_working_directory(self.manager.module_name.lower())),
                        "project_id": self.project.id,
                        "dynamips_id": self._dynamips_id,
                        "platform": self._platform,
@@ -278,8 +279,11 @@ class Router(BaseVM):
         :param returncode: Process returncode
         """
 
-        self.status = "stopped"
-        log.info("Dynamips hypervisor process has stopped, return code: %d", returncode)
+        if self.status == "started":
+            self.status = "stopped"
+            log.info("Dynamips hypervisor process has stopped, return code: %d", returncode)
+            if returncode != 0:
+                self.project.emit("log.error", {"message": "Dynamips hypervisor process has stopped, return code: {}\n{}".format(returncode, self._hypervisor.read_stdout())})
 
     @asyncio.coroutine
     def stop(self):
@@ -460,9 +464,6 @@ class Router(BaseVM):
         """
 
         image = self.manager.get_abs_image_path(image)
-
-        if not os.path.isfile(image):
-            raise DynamipsError("IOS image '{}' is not accessible".format(image))
 
         yield from self._hypervisor.send('vm set_ios "{name}" "{image}"'.format(name=self._name, image=image))
 
@@ -1246,10 +1247,20 @@ class Router(BaseVM):
             raise DynamipsError("Port {port_number} does not exist in adapter {adapter}".format(adapter=adapter,
                                                                                                 port_number=port_number))
 
-        yield from self._hypervisor.send('vm slot_add_nio_binding "{name}" {slot_number} {port_number} {nio}'.format(name=self._name,
-                                                                                                                     slot_number=slot_number,
-                                                                                                                     port_number=port_number,
-                                                                                                                     nio=nio))
+        try:
+            yield from self._hypervisor.send('vm slot_add_nio_binding "{name}" {slot_number} {port_number} {nio}'.format(name=self._name,
+                                                                                                                         slot_number=slot_number,
+                                                                                                                         port_number=port_number,
+                                                                                                                         nio=nio))
+        except DynamipsError:
+            # in case of error try to remove and add the nio binding
+            yield from self._hypervisor.send('vm slot_remove_nio_binding "{name}" {slot_number} {port_number}'.format(name=self._name,
+                                                                                                                      slot_number=slot_number,
+                                                                                                                      port_number=port_number))
+            yield from self._hypervisor.send('vm slot_add_nio_binding "{name}" {slot_number} {port_number} {nio}'.format(name=self._name,
+                                                                                                                         slot_number=slot_number,
+                                                                                                                         port_number=port_number,
+                                                                                                                         nio=nio))
 
         log.info('Router "{name}" [{id}]: NIO {nio_name} bound to port {slot_number}/{port_number}'.format(name=self._name,
                                                                                                            id=self._id,

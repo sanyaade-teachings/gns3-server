@@ -74,7 +74,7 @@ class VirtualBoxVM(BaseVM):
 
     def __json__(self):
 
-        return {"name": self.name,
+        json = {"name": self.name,
                 "vm_id": self.id,
                 "console": self.console,
                 "project_id": self.project.id,
@@ -86,6 +86,11 @@ class VirtualBoxVM(BaseVM):
                 "adapter_type": self.adapter_type,
                 "ram": self.ram,
                 "use_any_adapter": self.use_any_adapter}
+        if self._linked_clone:
+            json["vm_directory"] = self.working_dir
+        else:
+            json["vm_directory"] = None
+        return json
 
     @asyncio.coroutine
     def _get_system_properties(self):
@@ -144,7 +149,7 @@ class VirtualBoxVM(BaseVM):
 
         yield from self._get_system_properties()
         if "API version" not in self._system_properties:
-            raise VirtualBoxError("Can't access to VirtualBox API Version")
+            raise VirtualBoxError("Can't access to VirtualBox API version:\n{}".format(self._system_properties))
         if parse_version(self._system_properties["API version"]) < parse_version("4_3"):
             raise VirtualBoxError("The VirtualBox API version is lower than 4.3")
         log.info("VirtualBox VM '{name}' [{id}] created".format(name=self.name, id=self.id))

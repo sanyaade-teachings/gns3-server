@@ -36,9 +36,10 @@ class Config(object):
     Configuration file management using configparser.
 
     :params files: Array of configuration files (optional)
+    :params config_directory: Path of the configuration directory. If None default OS directory
     """
 
-    def __init__(self, files=None):
+    def __init__(self, files=None, config_directory=None):
 
         self._files = files
 
@@ -62,11 +63,11 @@ class Config(object):
             common_appdata = os.path.expandvars("%COMMON_APPDATA%")
             filename = "gns3_server.ini"
             if self._files is None:
-                self._files = [os.path.join(appdata, appname, filename),
+                self._files = [os.path.join(os.getcwd(), filename),
+                               os.path.join(appdata, appname, filename),
                                os.path.join(appdata, appname + ".ini"),
                                os.path.join(common_appdata, appname, filename),
-                               os.path.join(common_appdata, appname + ".ini"),
-                               filename]
+                               os.path.join(common_appdata, appname + ".ini")]
         else:
 
             # On UNIX-like platforms, the configuration file location can be one of the following:
@@ -80,11 +81,11 @@ class Config(object):
             home = os.path.expanduser("~")
             filename = "gns3_server.conf"
             if self._files is None:
-                self._files = [os.path.join(home, ".config", appname, filename),
+                self._files = [os.path.join(os.getcwd(), filename),
+                               os.path.join(home, ".config", appname, filename),
                                os.path.join(home, ".config", appname + ".conf"),
                                os.path.join("/etc/xdg", appname, filename),
-                               os.path.join("/etc/xdg", appname + ".conf"),
-                               filename]
+                               os.path.join("/etc/xdg", appname + ".conf")]
 
         if self._files is None:
             self._files = []

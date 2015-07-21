@@ -60,9 +60,9 @@ class QemuVM(BaseVM):
     :param console: TCP console port
     """
 
-    def __init__(self, name, vm_id, project, manager, qemu_path=None, console=None, platform=None):
+    def __init__(self, name, vm_id, project, manager, qemu_path=None, console=None, console_type="telnet", platform=None):
 
-        super().__init__(name, vm_id, project, manager, console=console)
+        super().__init__(name, vm_id, project, manager, console=console, console_type=console_type)
         server_config = manager.config.get_section_config("Server")
         self._host = server_config.get("host", "127.0.0.1")
         self._monitor_host = server_config.get("monitor_host", "127.0.0.1")
@@ -91,7 +91,6 @@ class QemuVM(BaseVM):
         self._hdd_disk_image = ""
         self._mac_address = ""
         self._options = ""
-        self._console_type = "telnet"
         self._ram = 256
         self._ethernet_adapters = []
         self._adapter_type = "e1000"
@@ -484,34 +483,9 @@ class QemuVM(BaseVM):
                                                                                         id=self._id,
                                                                                         options=options))
 
+        if not sys.platform.startswith("linux") and "-no-kvm" in options:
+            options = options.replace("-no-kvm")
         self._options = options.strip()
-
-    @property
-    def console_type(self):
-        """
-        Returns the console type for this QEMU VM.
-
-        :returns: console type (string)
-        """
-
-        return self._console_type
-
-    @console_type.setter
-    def console_type(self, console_type):
-        """
-        Sets the console type for this QEMU VM.
-
-        :param console_type: console type (string)
-        """
-
-        log.info('QEMU VM "{name}" [{id}] has set the console type to {console_type}'.format(name=self._name,
-                                                                                             id=self._id,
-                                                                                             console_type=console_type))
-
-        if self.is_running() and console_type != self._console_type:
-            raise QemuError("Sorry, changing the console type on a running Qemu VM is not supported.")
-
-        self._console_type = console_type
 
     @property
     def initrd(self):
@@ -704,6 +678,7 @@ class QemuVM(BaseVM):
                 self._stdout_file = os.path.join(self.working_dir, "qemu.log")
                 log.info("logging to {}".format(self._stdout_file))
                 with open(self._stdout_file, "w", encoding="utf-8") as fd:
+                    fd.write("Start QEMU with {}\n\nExecution log:\n".format(command_string))
                     self._process = yield from asyncio.create_subprocess_exec(*self._command,
                                                                               stdout=fd,
                                                                               stderr=subprocess.STDOUT,
@@ -732,6 +707,8 @@ class QemuVM(BaseVM):
             log.info("QEMU process has stopped, return code: %d", returncode)
             self.status = "stopped"
             self._process = None
+            if returncode != 0:
+                self.project.emit("log.error", {"message": "QEMU process has stopped, return code: {}\n{}".format(returncode, self.read_stdout())})
 
     @asyncio.coroutine
     def stop(self):
@@ -1006,7 +983,7 @@ class QemuVM(BaseVM):
     def _vnc_options(self):
 
         if self._console:
-            vnc_port = self._console - 5900
+            vnc_port = self._console - 5900  # subtract by 5900 to get the display number
             return ["-vnc", "{}:{}".format(self._manager.port_manager.console_host, vnc_port)]
         else:
             return []
@@ -1202,7 +1179,8 @@ class QemuVM(BaseVM):
         command = [self.qemu_path]
         command.extend(["-name", self._name])
         command.extend(["-m", str(self._ram)])
-        if sys.platform.startswith("linux") and self.manager.config.get_section_config("Qemu").getboolean("enable_kvm", True):
+        if sys.platform.startswith("linux") and self.manager.config.get_section_config("Qemu").getboolean("enable_kvm", True) \
+                and "-no-kvm" not in self._options:
             if not os.path.exists("/dev/kvm"):
                 raise QemuError("KVM acceleration cannot be used (/dev/kvm doesn't exist)")
             command.extend(["-enable-kvm"])

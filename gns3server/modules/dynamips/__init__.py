@@ -361,14 +361,6 @@ class Dynamips(BaseManager):
         return hypervisor
 
     @asyncio.coroutine
-    def ghost_ios_support(self, vm):
-
-        ghost_ios_support = self.config.get_section_config("Dynamips").getboolean("ghost_ios_support", True)
-        if ghost_ios_support:
-            with (yield from Dynamips._ghost_ios_lock):
-                yield from self._set_ghost_ios(vm)
-
-    @asyncio.coroutine
     def create_nio(self, node, nio_settings):
         """
         Creates a new NIO.
@@ -436,6 +428,14 @@ class Dynamips(BaseManager):
 
         yield from nio.create()
         return nio
+
+    @asyncio.coroutine
+    def ghost_ios_support(self, vm):
+
+        ghost_ios_support = self.config.get_section_config("Dynamips").getboolean("ghost_ios_support", True)
+        if ghost_ios_support:
+            with (yield from Dynamips._ghost_ios_lock):
+                yield from self._set_ghost_ios(vm)
 
     @asyncio.coroutine
     def _set_ghost_ios(self, vm):
@@ -655,3 +655,33 @@ class Dynamips(BaseManager):
         Return the full path of the images directory on disk
         """
         return os.path.join(os.path.expanduser(self.config.get_section_config("Server").get("images_path", "~/GNS3/images")), "IOS")
+
+    @asyncio.coroutine
+    def list_images(self):
+        """
+        Return the list of available IOS images.
+
+        :returns: Array of hash
+        """
+
+        image_dir = self.get_images_directory()
+        try:
+            files = os.listdir(image_dir)
+        except FileNotFoundError:
+            return []
+        files.sort()
+        images = []
+        for filename in files:
+            if filename[0] != "." and not filename.endswith(".md5sum"):
+                try:
+                    path = os.path.join(image_dir, filename)
+                    with open(path, "rb") as f:
+                        # read the first 7 bytes of the file.
+                        elf_header_start = f.read(7)
+                except OSError as e:
+                    print(e)
+                    continue
+                # valid IOS images must start with the ELF magic number, be 32-bit, big endian and have an ELF version of 1
+                if elf_header_start == b'\x7fELF\x01\x02\x01':
+                    images.append({"filename": filename})
+        return images

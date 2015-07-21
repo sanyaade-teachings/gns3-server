@@ -114,6 +114,43 @@ def test_stop(loop, vm, running_subprocess_mock):
         process.terminate.assert_called_with()
 
 
+def test_termination_callback(vm):
+
+    vm.status = "started"
+    queue = vm.project.get_listen_queue()
+
+    vm._termination_callback(0)
+    assert vm.status == "stopped"
+
+    (action, event) = queue.get_nowait()
+    assert action == "vm.stopped"
+    assert event == vm
+
+    with pytest.raises(asyncio.queues.QueueEmpty):
+        queue.get_nowait()
+
+
+def test_termination_callback_error(vm, tmpdir):
+
+    with open(str(tmpdir / "qemu.log"), "w+") as f:
+        f.write("BOOMM")
+
+    vm.status = "started"
+    vm._stdout_file = str(tmpdir / "qemu.log")
+    queue = vm.project.get_listen_queue()
+
+    vm._termination_callback(1)
+    assert vm.status == "stopped"
+
+    (action, event) = queue.get_nowait()
+    assert action == "vm.stopped"
+    assert event == vm
+
+    (action, event) = queue.get_nowait()
+    assert action == "log.error"
+    assert event["message"] == "QEMU process has stopped, return code: 1\nBOOMM"
+
+
 def test_reload(loop, vm):
 
     with asyncio_patch("gns3server.modules.qemu.QemuVM._control_vm") as mock:
@@ -292,7 +329,6 @@ def test_control_vm_expect_text(vm, loop, running_subprocess_mock):
 def test_build_command(vm, loop, fake_qemu_binary, port_manager):
 
     os.environ["DISPLAY"] = "0:0"
-    vm.kvm = False
     with asyncio_patch("asyncio.create_subprocess_exec", return_value=MagicMock()) as process:
         cmd = loop.run_until_complete(asyncio.async(vm._build_command()))
         assert cmd == [
@@ -310,17 +346,6 @@ def test_build_command(vm, loop, fake_qemu_binary, port_manager):
             "-device",
             "e1000,mac=00:00:ab:0e:0f:00"
         ]
-
-
-def test_build_command_with_kvm(vm, loop, fake_qemu_binary):
-
-    vm.kvm = True
-    with asyncio_patch("asyncio.create_subprocess_exec", return_value=MagicMock()) as process:
-        cmd = loop.run_until_complete(asyncio.async(vm._build_command()))
-        if sys.platform.startswith("linux"):
-            assert "-enable-kvm" in cmd
-        else:
-            assert "-enable-kvm" not in cmd
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not supported on Windows")

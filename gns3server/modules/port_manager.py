@@ -33,8 +33,9 @@ class PortManager:
     def __init__(self, host="127.0.0.1"):
 
         self._console_host = host
-        self._udp_host = host
 
+        # UDP host must be 0.0.0.0, reason: https://github.com/GNS3/gns3-server/issues/265
+        self._udp_host = "0.0.0.0"
         self._used_tcp_ports = set()
         self._used_udp_ports = set()
 
@@ -169,15 +170,20 @@ class PortManager:
                                                                                                                      host,
                                                                                                                      last_exception))
 
-    def get_free_tcp_port(self, project):
+    def get_free_tcp_port(self, project, port_range_start=None, port_range_end=None):
         """
         Get an available TCP port and reserve it
 
         :param project: Project instance
         """
 
-        port = self.find_unused_port(self._console_port_range[0],
-                                     self._console_port_range[1],
+        # use the default range is not specific one is given
+        if port_range_start is None and port_range_end is None:
+            port_range_start = self._console_port_range[0]
+            port_range_end = self._console_port_range[1]
+
+        port = self.find_unused_port(port_range_start,
+                                     port_range_end,
                                      host=self._console_host,
                                      socket_type="TCP",
                                      ignore_ports=self._used_tcp_ports)

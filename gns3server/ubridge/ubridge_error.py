@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2014 GNS3 Technologies Inc.
+# Copyright (C) 2015 GNS3 Technologies Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,22 +15,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import sys
-import netifaces
-
-from gns3server.utils.interfaces import interfaces, is_interface_up
-
-
-def test_interfaces():
-    # This test should pass on all platforms without crash
-    assert isinstance(interfaces(), list)
+"""
+Custom exceptions for the ubridge.
+"""
 
 
-def test_is_interface_up():
-    if sys.platform.startswith("win"):
-        assert is_interface_up(netifaces.interfaces[0]) is True
-    elif sys.platform.startswith("darwin"):
-        assert is_interface_up("lo0") is True
-    else:
-        assert is_interface_up("lo") is True
-        assert is_interface_up("fake0") is False
+class UbridgeError(Exception):
+
+    def __init__(self, message):
+        Exception.__init__(self, message)
