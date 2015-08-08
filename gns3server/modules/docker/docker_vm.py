@@ -285,20 +285,19 @@ class Container(BaseVM):
                         name=self.name, adapter_number=adapter_number))
 
         yield from self._ubridge_hypervisor.send(
-            'docker create_veth {guestif} {hostif}'.format(
+            'docker create_veth {hostif} {guestif}'.format(
                 guestif=adapter.guest_ifc, hostif=adapter.host_ifc))
-
-        yield from self._ubridge_hypervisor.send(
-            'bridge create bridge{}'.format(adapter_number))
-
-        yield from self._ubridge_hypervisor.send(
-            'bridge add_nio_linux_raw bridge{adapter} {ifc}'.format(
-                ifc=adapter.host_ifc, adapter=adapter_number))
 
         namespace = yield from self.get_namespace()
         yield from self._ubridge_hypervisor.send(
             'docker move_to_ns {ifc} {ns}'.format(
                 ifc=adapter.guest_ifc, ns=namespace))
+
+        yield from self._ubridge_hypervisor.send(
+            'bridge create bridge{}'.format(adapter_number))
+        yield from self._ubridge_hypervisor.send(
+            'bridge add_nio_linux_raw bridge{adapter} {ifc}'.format(
+                ifc=adapter.host_ifc, adapter=adapter_number))
 
         if isinstance(nio, NIOUDP):
             yield from self._ubridge_hypervisor.send(
