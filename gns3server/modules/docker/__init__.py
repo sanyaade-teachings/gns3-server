@@ -78,9 +78,6 @@ class Docker(BaseManager):
         :rtype: list
         """
         images = []
-        # FIXME: catch exceptions from self._client.images()
-        # e.g. requests.exceptions.ConnectionError: UnixHTTPConnectionPool(host='localhost', port=None): Max retries exceeded with url: /v1.18/images/json?only_ids=0&all=0 (Caused by <class 'PermissionError'>: [Errno 13] Permission denied)
-        # because I did not reboot after putting my login in the docker group: https://github.com/docker/docker/issues/5314
         for image in self._client.images():
             for tag in image['RepoTags']:
                 images.append({'imagename': tag})
@@ -118,38 +115,3 @@ class Docker(BaseManager):
                     text="Project ID {} doesn't belong to container {}".format(
                         project_id, container.name))
         return container
-
-    # def create_nio(self, adapter_number, nio_settings):
-    #     """Creates a new NIO.
-
-    #     :param adapter_number: adapter number to create NIO
-    #     :param nio_settings: information to create the NIO
-
-    #     :returns: a NIO object
-    #     """
-    #     nio = None
-    #     if nio_settings["type"] == "nio_udp":
-    #         host_device = "gns3veth%sh" % int(adapter_number)
-    #         container_device = "gns3veth%sc" % int(adapter_number)
-    #         lport = nio_settings["lport"]
-    #         rhost = nio_settings["rhost"]
-    #         rport = nio_settings["rport"]
-    #         try:
-    #             info = socket.getaddrinfo(
-    #                 rhost, rport, socket.AF_UNSPEC, socket.SOCK_DGRAM, 0,
-    #                 socket.AI_PASSIVE)
-    #             if not info:
-    #                 raise aiohttp.web.HTTPInternalServerError(
-    #                     text="getaddrinfo returns an empty list on {}:{}".format(
-    #                         rhost, rport))
-    #             for res in info:
-    #                 af, socktype, proto, _, sa = res
-    #                 with socket.socket(af, socktype, proto) as sock:
-    #                     sock.connect(sa)
-    #         except OSError as err:
-    #             raise aiohttp.web.HTTPInternalServerError(
-    #                 text="Could not create an UDP connection to {}:{}: {}".format(
-    #                     rhost, rport, err))
-    #         nio = NIOGenericEthernet(ethernet_device)
-    #     assert nio is not None
-    #     return nio

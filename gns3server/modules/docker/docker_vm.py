@@ -19,25 +19,13 @@
 Docker container instance.
 """
 
-import sys
-import shlex
-import re
-import os
-import tempfile
-import json
-import socket
 import asyncio
+import shutil
 import docker
 import netifaces
-import subprocess
-import configparser
-import signal
 
 from docker.utils import create_host_config
-
 from gns3server.ubridge.hypervisor import Hypervisor
-from gns3server.utils.asyncio import wait_for_process_termination
-from gns3server.utils.asyncio import monitor_process
 from pkg_resources import parse_version
 from .docker_error import DockerError
 from ..base_vm import BaseVM
@@ -52,6 +40,7 @@ class Container(BaseVM):
     """Docker container implementation.
 
     :param name: Docker container name
+    :param vm_id: Docker VM identifier
     :param project: Project instance
     :param manager: Manager instance
     :param image: Docker image
@@ -149,7 +138,8 @@ class Container(BaseVM):
         log.info("Hypervisor {}:{} has successfully started".format(
             self._ubridge_hypervisor.host, self._ubridge_hypervisor.port))
         yield from self._ubridge_hypervisor.connect()
-        if parse_version(self._ubridge_hypervisor.version) < parse_version('0.9.1'):
+        if parse_version(
+                self._ubridge_hypervisor.version) < parse_version('0.9.1'):
             raise DockerError(
                 "uBridge version must be >= 0.9.1, detected version is {}".format(
                     self._ubridge_hypervisor.version))
@@ -306,15 +296,15 @@ class Container(BaseVM):
                     rport=nio.rport))
 
         if nio.capturing:
-            yield from self._ubridge_hypervisor.send('bridge start_capture bridge{adapter} "{pcap_file}"'.format(
-                adapter=adapter_number, pcap_file=nio.pcap_output_file))
+            yield from self._ubridge_hypervisor.send(
+                'bridge start_capture bridge{adapter} "{pcap_file}"'.format(
+                    adapter=adapter_number, pcap_file=nio.pcap_output_file))
 
-        yield from self._ubridge_hypervisor.send('bridge start bridge{adapter}'.format(
-            adapter=adapter_number))
+        yield from self._ubridge_hypervisor.send(
+            'bridge start bridge{adapter}'.format(adapter=adapter_number))
 
     def _delete_ubridge_connection(self, adapter_number):
-        """
-        Deletes a connection in uBridge.
+        """Deletes a connection in uBridge.
 
         :param adapter_number: adapter number
         """
@@ -360,17 +350,20 @@ class Container(BaseVM):
 
         nio = adapter.get_nio(0)
         if isinstance(nio, NIOUDP):
-            self.manager.port_manager.release_udp_port(nio.lport, self._project)
+            self.manager.port_manager.release_udp_port(
+                nio.lport, self._project)
         adapter.remove_nio(0)
         if self._started:
             yield from self._delete_ubridge_connection(adapter_number)
 
-        log.info("Docker VM '{name}' [{id}]: {nio} removed from adapter {adapter_number}".format(
-            name=self.name, id=self.id, nio=nio, adapter_number=adapter_number))
+        log.info(
+            "Docker VM '{name}' [{id}]: {nio} removed from adapter {adapter_number}".format(
+                name=self.name, id=self.id, nio=nio,
+                adapter_number=adapter_number))
 
     @property
     def adapters(self):
-        """Returns the number of Ethernet adapters for this QEMU VM.
+        """Returns the number of Ethernet adapters for this Docker VM.
 
         :returns: number of adapters
         :rtype: int
