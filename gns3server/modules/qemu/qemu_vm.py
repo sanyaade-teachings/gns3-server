@@ -73,7 +73,6 @@ class QemuVM(BaseVM):
         self._stdout_file = ""
 
         # QEMU VM settings
-
         if qemu_path:
             try:
                 self.qemu_path = qemu_path
@@ -89,9 +88,16 @@ class QemuVM(BaseVM):
         self._hdb_disk_image = ""
         self._hdc_disk_image = ""
         self._hdd_disk_image = ""
+        self._hda_disk_interface = "ide"
+        self._hdb_disk_interface = "ide"
+        self._hdc_disk_interface = "ide"
+        self._hdd_disk_interface = "ide"
+        self._cdrom_image = ""
+        self._boot_priority = "c"
         self._mac_address = ""
         self._options = ""
         self._ram = 256
+        self._cpus = 1
         self._ethernet_adapters = []
         self._adapter_type = "e1000"
         self._initrd = ""
@@ -144,7 +150,7 @@ class QemuVM(BaseVM):
             self._platform = "x86_64"
         else:
             self._platform = re.sub(r'^qemu-system-(.*)(w.exe)?$', r'\1', os.path.basename(qemu_path), re.IGNORECASE)
-        if self._platform not in QEMU_PLATFORMS:
+        if self._platform.split(".")[0] not in QEMU_PLATFORMS:
             raise QemuError("Platform {} is unknown".format(self._platform))
         log.info('QEMU VM "{name}" [{id}] has set the QEMU path to {qemu_path}'.format(name=self._name,
                                                                                        id=self._id,
@@ -190,7 +196,6 @@ class QemuVM(BaseVM):
 
         :param hda_disk_image: QEMU hda disk image path
         """
-
         self._hda_disk_image = self.manager.get_abs_image_path(hda_disk_image)
         log.info('QEMU VM "{name}" [{id}] has set the QEMU hda disk image path to {disk_image}'.format(name=self._name,
                                                                                                        id=self._id,
@@ -265,6 +270,143 @@ class QemuVM(BaseVM):
         log.info('QEMU VM "{name}" [{id}] has set the QEMU hdd disk image path to {disk_image}'.format(name=self._name,
                                                                                                        id=self._id,
                                                                                                        disk_image=self._hdd_disk_image))
+
+    @property
+    def hda_disk_interface(self):
+        """
+        Returns the hda disk interface this QEMU VM.
+
+        :returns: QEMU hda disk interface
+        """
+
+        return self._hda_disk_interface
+
+    @hda_disk_interface.setter
+    def hda_disk_interface(self, hda_disk_interface):
+        """
+        Sets the hda disk interface for this QEMU VM.
+
+        :param hda_disk_interface: QEMU hda disk interface
+        """
+
+        self._hda_disk_interface = hda_disk_interface
+        log.info('QEMU VM "{name}" [{id}] has set the QEMU hda disk interface to {interface}'.format(name=self._name,
+                                                                                                     id=self._id,
+                                                                                                     interface=self._hda_disk_interface))
+
+    @property
+    def hdb_disk_interface(self):
+        """
+        Returns the hdb disk interface this QEMU VM.
+
+        :returns: QEMU hdb disk interface
+        """
+
+        return self._hda_disk_interface
+
+    @hdb_disk_interface.setter
+    def hdb_disk_interface(self, hdb_disk_interface):
+        """
+        Sets the hda disk interface for this QEMU VM.
+
+        :param hdb_disk_interface: QEMU hdb disk interface
+        """
+
+        self._hdb_disk_interface = hdb_disk_interface
+        log.info('QEMU VM "{name}" [{id}] has set the QEMU hdb disk interface to {interface}'.format(name=self._name,
+                                                                                                     id=self._id,
+                                                                                                     interface=self._hdb_disk_interface))
+
+    @property
+    def hdc_disk_interface(self):
+        """
+        Returns the hdc disk interface this QEMU VM.
+
+        :returns: QEMU hdc disk interface
+        """
+
+        return self._hdc_disk_interface
+
+    @hdc_disk_interface.setter
+    def hdc_disk_interface(self, hdc_disk_interface):
+        """
+        Sets the hdc disk interface for this QEMU VM.
+
+        :param hdc_disk_interface: QEMU hdc disk interface
+        """
+
+        self._hdc_disk_interface = hdc_disk_interface
+        log.info('QEMU VM "{name}" [{id}] has set the QEMU hdc disk interface to {interface}'.format(name=self._name,
+                                                                                                     id=self._id,
+                                                                                                     interface=self._hdc_disk_interface))
+
+    @property
+    def hdd_disk_interface(self):
+        """
+        Returns the hda disk interface this QEMU VM.
+
+        :returns: QEMU hda disk interface
+        """
+
+        return self._hdd_disk_interface
+
+    @hdd_disk_interface.setter
+    def hdd_disk_interface(self, hdd_disk_interface):
+        """
+        Sets the hdd disk interface for this QEMU VM.
+
+        :param hdd_disk_interface: QEMU hdd disk interface
+        """
+
+        self._hdd_disk_interface = hdd_disk_interface
+        log.info('QEMU VM "{name}" [{id}] has set the QEMU hdd disk interface to {interface}'.format(name=self._name,
+                                                                                                     id=self._id,
+                                                                                                     interface=self._hdd_disk_interface))
+
+    @property
+    def cdrom_image(self):
+        """
+        Returns the cdrom image path for this QEMU VM.
+
+        :returns: QEMU cdrom image path
+        """
+
+        return self._cdrom_image
+
+    @cdrom_image.setter
+    def cdrom_image(self, cdrom_image):
+        """
+        Sets the cdrom image for this QEMU VM.
+
+        :param cdrom_image: QEMU cdrom image path
+        """
+        self._cdrom_image = self.manager.get_abs_image_path(cdrom_image)
+        log.info('QEMU VM "{name}" [{id}] has set the QEMU cdrom image path to {cdrom_image}'.format(name=self._name,
+                                                                                                     id=self._id,
+                                                                                                     cdrom_image=self._cdrom_image))
+
+    @property
+    def boot_priority(self):
+        """
+        Returns the boot priority for this QEMU VM.
+
+        :returns: QEMU boot priority
+        """
+
+        return self._boot_priority
+
+    @boot_priority.setter
+    def boot_priority(self, boot_priority):
+        """
+        Sets the boot priority for this QEMU VM.
+
+        :param boot_priority: QEMU boot priority
+        """
+
+        self._boot_priority = boot_priority
+        log.info('QEMU VM "{name}" [{id}] has set the boot priority to {boot_priority}'.format(name=self._name,
+                                                                                               id=self._id,
+                                                                                               boot_priority=self._boot_priority))
 
     @property
     def adapters(self):
@@ -462,6 +604,27 @@ class QemuVM(BaseVM):
         self._ram = ram
 
     @property
+    def cpus(self):
+        """
+        Returns the number of vCPUs this QEMU VM.
+
+        :returns: number of vCPUs.
+        """
+
+        return self._cpus
+
+    @cpus.setter
+    def cpus(self, cpus):
+        """
+        Sets the number of vCPUs this QEMU VM.
+
+        :param cpus: number of vCPUs.
+        """
+
+        log.info('QEMU VM "{name}" [{id}] has set the number of vCPUs to {cpus}'.format(name=self._name, id=self._id, cpus=cpus))
+        self._cpus = cpus
+
+    @property
     def options(self):
         """
         Returns the options for this QEMU VM.
@@ -483,8 +646,11 @@ class QemuVM(BaseVM):
                                                                                         id=self._id,
                                                                                         options=options))
 
-        if not sys.platform.startswith("linux") and "-no-kvm" in options:
-            options = options.replace("-no-kvm")
+        if not sys.platform.startswith("linux"):
+            if "-no-kvm" in options:
+                options = options.replace("-no-kvm", "")
+            if "-enable-kvm" in options:
+                options = options.replace("-enable-kvm", "")
         self._options = options.strip()
 
     @property
@@ -672,7 +838,7 @@ class QemuVM(BaseVM):
                     raise QemuError("Could not find free port for the Qemu monitor: {}".format(e))
 
             self._command = yield from self._build_command()
-            command_string = " ".join(self._command)
+            command_string = " ".join(shlex.quote(s) for s in self._command)
             try:
                 log.info("Starting QEMU with: {}".format(command_string))
                 self._stdout_file = os.path.join(self.working_dir, "qemu.log")
@@ -696,6 +862,9 @@ class QemuVM(BaseVM):
             if self._cpu_throttling:
                 self._set_cpu_throttling()
 
+            if "-enable-kvm" in command_string:
+                self._hw_virtualization = True
+
     def _termination_callback(self, returncode):
         """
         Called when the process has stopped.
@@ -706,6 +875,7 @@ class QemuVM(BaseVM):
         if self.started:
             log.info("QEMU process has stopped, return code: %d", returncode)
             self.status = "stopped"
+            self._hw_virtualization = False
             self._process = None
             if returncode != 0:
                 self.project.emit("log.error", {"message": "QEMU process has stopped, return code: {}\n{}".format(returncode, self.read_stdout())})
@@ -717,6 +887,7 @@ class QemuVM(BaseVM):
         """
 
         # stop the QEMU process
+        self._hw_virtualization = False
         if self.is_running():
             log.info('Stopping QEMU VM "{}" PID={}'.format(self._name, self._process.pid))
             try:
@@ -995,10 +1166,13 @@ class QemuVM(BaseVM):
         else:
             return []
 
-    @asyncio.coroutine
-    def _disk_options(self):
+    def _get_qemu_img(self):
+        """
+        Search the qemu-img binary in the same binary of the qemu binary
+        for avoiding version incompatibily.
 
-        options = []
+        :returns: qemu-img path or raise an error
+        """
         qemu_img_path = ""
         qemu_path_dir = os.path.dirname(self.qemu_path)
         try:
@@ -1011,31 +1185,30 @@ class QemuVM(BaseVM):
         if not qemu_img_path:
             raise QemuError("Could not find qemu-img in {}".format(qemu_path_dir))
 
-        try:
-            if self._hda_disk_image:
-                if not os.path.isfile(self._hda_disk_image) or not os.path.exists(self._hda_disk_image):
-                    if os.path.islink(self._hda_disk_image):
-                        raise QemuError("hda disk image '{}' linked to '{}' is not accessible".format(self._hda_disk_image, os.path.realpath(self._hda_disk_image)))
-                    else:
-                        raise QemuError("hda disk image '{}' is not accessible".format(self._hda_disk_image))
-                hda_disk = os.path.join(self.working_dir, "hda_disk.qcow2")
-                if not os.path.exists(hda_disk):
+        return qemu_img_path
+
+    @asyncio.coroutine
+    def _disk_options(self):
+        options = []
+        qemu_img_path = self._get_qemu_img()
+
+        if self._hda_disk_image:
+            if not os.path.isfile(self._hda_disk_image) or not os.path.exists(self._hda_disk_image):
+                if os.path.islink(self._hda_disk_image):
+                    raise QemuError("hda disk image '{}' linked to '{}' is not accessible".format(self._hda_disk_image, os.path.realpath(self._hda_disk_image)))
+                else:
+                    raise QemuError("hda disk image '{}' is not accessible".format(self._hda_disk_image))
+            hda_disk = os.path.join(self.working_dir, "hda_disk.qcow2")
+            if not os.path.exists(hda_disk):
+                try:
                     process = yield from asyncio.create_subprocess_exec(qemu_img_path, "create", "-o",
                                                                         "backing_file={}".format(self._hda_disk_image),
                                                                         "-f", "qcow2", hda_disk)
                     retcode = yield from process.wait()
                     log.info("{} returned with {}".format(qemu_img_path, retcode))
-            else:
-                # create a "FLASH" with 256MB if no disk image has been specified
-                hda_disk = os.path.join(self.working_dir, "flash.qcow2")
-                if not os.path.exists(hda_disk):
-                    process = yield from asyncio.create_subprocess_exec(qemu_img_path, "create", "-f", "qcow2", hda_disk, "256M")
-                    retcode = yield from process.wait()
-                    log.info("{} returned with {}".format(qemu_img_path, retcode))
-
-        except (OSError, subprocess.SubprocessError) as e:
-            raise QemuError("Could not create hda disk image {}".format(e))
-        options.extend(["-hda", hda_disk])
+                except (OSError, subprocess.SubprocessError) as e:
+                    raise QemuError("Could not create hda disk image {}".format(e))
+            options.extend(["-drive", 'file={},if={},index=0,media=disk'.format(hda_disk, self.hda_disk_interface)])
 
         if self._hdb_disk_image:
             if not os.path.isfile(self._hdb_disk_image) or not os.path.exists(self._hdb_disk_image):
@@ -1053,7 +1226,7 @@ class QemuVM(BaseVM):
                     log.info("{} returned with {}".format(qemu_img_path, retcode))
                 except (OSError, subprocess.SubprocessError) as e:
                     raise QemuError("Could not create hdb disk image {}".format(e))
-            options.extend(["-hdb", hdb_disk])
+            options.extend(["-drive", 'file={},if={},index=1,media=disk'.format(hdb_disk, self.hdb_disk_interface)])
 
         if self._hdc_disk_image:
             if not os.path.isfile(self._hdc_disk_image) or not os.path.exists(self._hdc_disk_image):
@@ -1071,7 +1244,7 @@ class QemuVM(BaseVM):
                     log.info("{} returned with {}".format(qemu_img_path, retcode))
                 except (OSError, subprocess.SubprocessError) as e:
                     raise QemuError("Could not create hdc disk image {}".format(e))
-            options.extend(["-hdc", hdc_disk])
+            options.extend(["-drive", 'file={},if={},index=2,media=disk'.format(hdc_disk, self.hdc_disk_interface)])
 
         if self._hdd_disk_image:
             if not os.path.isfile(self._hdd_disk_image) or not os.path.exists(self._hdd_disk_image):
@@ -1089,8 +1262,22 @@ class QemuVM(BaseVM):
                     log.info("{} returned with {}".format(qemu_img_path, retcode))
                 except (OSError, subprocess.SubprocessError) as e:
                     raise QemuError("Could not create hdd disk image {}".format(e))
-            options.extend(["-hdd", hdd_disk])
+            options.extend(["-drive", 'file={},if={},index=3,media=disk'.format(hdd_disk, self.hdd_disk_interface)])
 
+        return options
+
+    def _cdrom_option(self):
+
+        options = []
+        if self._cdrom_image:
+            if not os.path.isfile(self._cdrom_image) or not os.path.exists(self._cdrom_image):
+                if os.path.islink(self._cdrom_image):
+                    raise QemuError("cdrom image '{}' linked to '{}' is not accessible".format(self._cdrom_image, os.path.realpath(self._cdrom_image)))
+                else:
+                    raise QemuError("cdrom image '{}' is not accessible".format(self._cdrom_image))
+            if self._hdc_disk_image:
+                raise QemuError("You cannot use a disk image on hdc disk and a CDROM image at the same time")
+            options.extend(["-cdrom", self._cdrom_image])
         return options
 
     def _linux_boot_options(self):
@@ -1150,7 +1337,7 @@ class QemuVM(BaseVM):
                                                                                                                 self._host,
                                                                                                                 nio.lport)])
                     elif isinstance(nio, NIOTAP):
-                        network_options.extend(["-netdev", "tap,id=gns3-{},ifname={}".format(adapter_number, nio.tap_device)])
+                        network_options.extend(["-netdev", "tap,id=gns3-{},ifname={},script=no,downscript=no".format(adapter_number, nio.tap_device)])
                     elif isinstance(nio, NIONAT):
                         network_options.extend(["-netdev", "user,id=gns3-{}".format(adapter_number)])
                 else:
@@ -1169,6 +1356,27 @@ class QemuVM(BaseVM):
             return []
         return ["-nographic"]
 
+    def _run_with_kvm(self, qemu_path, options):
+        """
+        Check if we could run qemu with KVM
+
+        :param qemu_path: Path to qemu
+        :param options: String of qemu user options
+        :returns: Boolean True if we need to enable KVM
+        """
+
+        if sys.platform.startswith("linux") and self.manager.config.get_section_config("Qemu").getboolean("enable_kvm", True) \
+                and "-no-kvm" not in options:
+
+            # Turn OFF kvm for non x86 architectures
+            if os.path.basename(qemu_path) not in ["qemu-system-x86_64", "qemu-system-i386", "qemu-kvm"]:
+                return False
+
+            if not os.path.exists("/dev/kvm"):
+                raise QemuError("KVM acceleration cannot be used (/dev/kvm doesn't exist)")
+            return True
+        return False
+
     @asyncio.coroutine
     def _build_command(self):
         """
@@ -1178,14 +1386,15 @@ class QemuVM(BaseVM):
 
         command = [self.qemu_path]
         command.extend(["-name", self._name])
-        command.extend(["-m", str(self._ram)])
-        if sys.platform.startswith("linux") and self.manager.config.get_section_config("Qemu").getboolean("enable_kvm", True) \
-                and "-no-kvm" not in self._options:
-            if not os.path.exists("/dev/kvm"):
-                raise QemuError("KVM acceleration cannot be used (/dev/kvm doesn't exist)")
+        command.extend(["-m", "{}M".format(self._ram)])
+        command.extend(["-smp", "cpus={}".format(self._cpus)])
+        if self._run_with_kvm(self.qemu_path, self._options):
             command.extend(["-enable-kvm"])
+        command.extend(["-boot", "order={}".format(self._boot_priority)])
         disk_options = yield from self._disk_options()
         command.extend(disk_options)
+        cdrom_option = self._cdrom_option()
+        command.extend(cdrom_option)
         command.extend(self._linux_boot_options())
         if self._console_type == "telnet":
             command.extend(self._serial_options())
@@ -1226,6 +1435,8 @@ class QemuVM(BaseVM):
         answer["hdc_disk_image_md5sum"] = md5sum(self._hdc_disk_image)
         answer["hdd_disk_image"] = self.manager.get_relative_image_path(self._hdd_disk_image)
         answer["hdd_disk_image_md5sum"] = md5sum(self._hdd_disk_image)
+        answer["cdrom_image"] = self.manager.get_relative_image_path(self._cdrom_image)
+        answer["cdrom_image_md5sum"] = md5sum(self._cdrom_image)
         answer["initrd"] = self.manager.get_relative_image_path(self._initrd)
         answer["initrd_md5sum"] = md5sum(self._initrd)
 

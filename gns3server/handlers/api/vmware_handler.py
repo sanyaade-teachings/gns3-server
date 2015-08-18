@@ -41,7 +41,7 @@ class VMwareHandler:
     def show(request, response):
 
         vmware_manager = VMware.instance()
-        vms = vmware_manager.list_vms()
+        vms = yield from vmware_manager.list_vms()
         response.json(vms)
 
     @classmethod
@@ -160,6 +160,10 @@ class VMwareHandler:
 
         vmware_manager = VMware.instance()
         vm = vmware_manager.get_vm(request.match_info["vm_id"], project_id=request.match_info["project_id"])
+        if vm.check_hw_virtualization():
+            pm = ProjectManager.instance()
+            if pm.check_hardware_virtualization(vm) is False:
+                raise HTTPConflict(text="Cannot start VM because hardware virtualization (VT-x/AMD-V) is already used by another software like VirtualBox or KVM (on Linux)")
         yield from vm.start()
         response.set_status(204)
 

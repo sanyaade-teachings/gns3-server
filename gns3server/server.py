@@ -85,7 +85,7 @@ class Server:
         """
 
         if self._handler:
-            yield from self._handler.finish_connections(1.0)
+            yield from self._handler.finish_connections()
             self._handler = None
 
         for module in MODULES:
@@ -252,7 +252,8 @@ class Server:
             # TypeError: async() takes 1 positional argument but 3 were given
             log.warning("TypeError exception in the loop {}".format(e))
         finally:
-            if self._handler:
-                self._loop.run_until_complete(self._handler.finish_connections(1.0))
+            if self._handler and self._loop.is_running():
+                self._loop.run_until_complete(self._handler.finish_connections())
             server.close()
-            self._loop.run_until_complete(app.finish())
+            if self._loop.is_running():
+                self._loop.run_until_complete(app.finish())

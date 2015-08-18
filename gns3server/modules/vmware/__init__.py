@@ -30,6 +30,7 @@ import codecs
 
 from collections import OrderedDict
 from gns3server.utils.interfaces import interfaces
+from gns3server.utils.asyncio import subprocess_check_output
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +65,22 @@ class VMware(BaseManager):
 
         return self._vmrun_path
 
+    @staticmethod
+    def _find_vmrun_registry(regkey):
+
+        import winreg
+        try:
+            # default path not used, let's look in the registry
+            hkey = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, regkey)
+            ws_install_path, _ = winreg.QueryValueEx(hkey, "InstallPath")
+            vmrun_path = os.path.join(ws_install_path, "vmrun.exe")
+            winreg.CloseKey(hkey)
+            if os.path.exists(vmrun_path):
+                return vmrun_path
+        except OSError:
+            pass
+        return None
+
     def find_vmrun(self):
         """
         Searches for vmrun.
@@ -77,12 +94,21 @@ class VMware(BaseManager):
             if sys.platform.startswith("win"):
                 vmrun_path = shutil.which("vmrun")
                 if vmrun_path is None:
+                    # look for vmrun.exe in default VMware Workstation directory
                     vmrun_ws = os.path.expandvars(r"%PROGRAMFILES(X86)%\VMware\VMware Workstation\vmrun.exe")
-                    vmrun_vix = os.path.expandvars(r"%PROGRAMFILES(X86)%\VMware\VMware VIX\vmrun.exe")
                     if os.path.exists(vmrun_ws):
                         vmrun_path = vmrun_ws
-                    elif os.path.exists(vmrun_vix):
-                        vmrun_path = vmrun_vix
+                    else:
+                        # look for vmrun.exe using the directory listed in the registry
+                        vmrun_path = self._find_vmrun_registry(r"SOFTWARE\Wow6432Node\VMware, Inc.\VMware Workstation")
+                    if vmrun_path is None:
+                        # look for vmrun.exe in default VMware VIX directory
+                        vmrun_vix = os.path.expandvars(r"%PROGRAMFILES(X86)%\VMware\VMware VIX\vmrun.exe")
+                        if os.path.exists(vmrun_vix):
+                            vmrun_path = vmrun_vix
+                        else:
+                            # look for vmrun.exe using the directory listed in the registry
+                            vmrun_path = self._find_vmrun_registry(r"SOFTWARE\Wow6432Node\VMware, Inc.\VMware VIX")
             elif sys.platform.startswith("darwin"):
                 vmrun_path = "/Applications/VMware Fusion.app/Contents/Library/vmrun"
             else:
@@ -99,6 +125,75 @@ class VMware(BaseManager):
 
         self._vmrun_path = vmrun_path
         return vmrun_path
+
+    @staticmethod
+    def _find_vmware_version_registry(regkey):
+
+        import winreg
+        version = None
+        try:
+            # default path not used, let's look in the registry
+            hkey = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, regkey)
+            version, _ = winreg.QueryValueEx(hkey, "ProductVersion")
+            winreg.CloseKey(hkey)
+        except OSError:
+            pass
+        if version is not None:
+            match = re.search("([0-9]+)\.", version)
+            if match:
+                version = match.group(1)
+        return version
+
+    @asyncio.coroutine
+    def check_vmware_version(self):
+        """
+        Check VMware version
+        """
+
+        if sys.platform.startswith("win"):
+            # look for vmrun.exe using the directory listed in the registry
+            ws_version = self._find_vmware_version_registry(r"SOFTWARE\Wow6432Node\VMware, Inc.\VMware Workstation")
+            if ws_version is None:
+                player_version = self._find_vmware_version_registry(r"SOFTWARE\Wow6432Node\VMware, Inc.\VMware Player")
+                if player_version:
+                    log.debug("VMware Player version {} detected".format(player_version))
+                    if int(player_version) < 6:
+                        raise VMwareError("Using VMware Player requires version 6 or above")
+                else:
+                    log.warning("Could not find VMware version")
+            else:
+                log.debug("VMware Workstation version {} detected".format(ws_version))
+                if int(ws_version) < 10:
+                    raise VMwareError("Using VMware Workstation requires version 10 or above")
+            return
+        else:
+            if sys.platform.startswith("darwin"):
+                return  # FIXME: no version checking on Mac OS X
+            else:
+                vmware_path = shutil.which("vmware")
+
+            if vmware_path is None:
+                raise VMwareError("VMware is not installed (vmware executable could not be found in $PATH)")
+
+            try:
+                output = yield from subprocess_check_output(vmware_path, "-v")
+                match = re.search("VMware Workstation ([0-9]+)\.", output)
+                version = None
+                if match:
+                    version = match.group(1)
+                    log.debug("VMware Workstation version {} detected".format(version))
+                    if int(version) < 10:
+                        raise VMwareError("Using VMware Workstation requires version 10 or above")
+                match = re.search("VMware Player ([0-9]+)\.", output)
+                if match:
+                    version = match.group(1)
+                    log.debug("VMware Player version {} detected".format(version))
+                    if int(version) < 6:
+                        raise VMwareError("Using VMware Player requires version 6 or above")
+                if version is None:
+                    log.warning("Could not find VMware version")
+            except (OSError, subprocess.SubprocessError) as e:
+                log.error("Error while looking for the VMware version: {}".format(e))
 
     @staticmethod
     def get_vmnet_interfaces():
@@ -217,11 +312,11 @@ class VMware(BaseManager):
         pairs = OrderedDict()
         encoding = "utf-8"
         # get the first line to read the .encoding value
-        with open(path, encoding=encoding) as f:
-            line = f.readline()
+        with open(path, "rb") as f:
+            line = f.readline().decode(encoding, errors="ignore")
             if line.startswith("#!"):
                 # skip the shebang
-                line = f.readline()
+                line = f.readline().decode(encoding, errors="ignore")
             try:
                 key, value = line.split('=', 1)
                 if key.strip().lower() == ".encoding":
@@ -395,10 +490,14 @@ class VMware(BaseManager):
         else:
             return os.path.expanduser("~/vmware")
 
+    @asyncio.coroutine
     def list_vms(self):
         """
         Gets VMware VM list.
         """
+
+        # check for the right VMware version
+        yield from self.check_vmware_version()
 
         inventory_path = self.get_vmware_inventory_path()
         if os.path.exists(inventory_path):

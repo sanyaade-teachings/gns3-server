@@ -130,7 +130,7 @@ class Dynamips(BaseManager):
             for future in done:
                 try:
                     future.result()
-                except Exception as e:
+                except (Exception, GeneratorExit) as e:
                     log.error("Could not stop device hypervisor {}".format(e), exc_info=1)
                     continue
 
@@ -154,7 +154,7 @@ class Dynamips(BaseManager):
             for future in done:
                 try:
                     future.result()
-                except Exception as e:
+                except (Exception, GeneratorExit) as e:
                     log.error("Could not delete device {}".format(e), exc_info=1)
 
     @asyncio.coroutine
@@ -174,7 +174,6 @@ class Dynamips(BaseManager):
         files += glob.glob(os.path.join(project_dir, "c[0-9][0-9][0-9][0-9]_i[0-9]*_rommon_vars"))
         files += glob.glob(os.path.join(project_dir, "c[0-9][0-9][0-9][0-9]_i[0-9]*_ssa"))
         files += glob.glob(os.path.join(project_dir, "c[0-9][0-9][0-9][0-9]_i[0-9]*_log.txt"))
-        files += glob.glob(os.path.join(project_dir, "c[0-9][0-9][0-9][0-9]_i[0-9]*_rom"))
         files += glob.glob(os.path.join(project_dir, "c[0-9][0-9][0-9][0-9]_i[0-9]*_bootflash"))
         for file in files:
             try:

@@ -35,7 +35,6 @@ from ...base_vm import BaseVM
 from ..dynamips_error import DynamipsError
 from ..nios.nio_udp import NIOUDP
 
-from gns3server.config import Config
 from gns3server.utils.asyncio import wait_run_in_executor, monitor_process
 from gns3server.utils.images import md5sum
 
@@ -164,7 +163,7 @@ class Router(BaseVM):
         for slot in self._slots:
             if slot:
                 slot = str(slot)
-                router_info["slot" + str(slot_number)] = slot
+            router_info["slot" + str(slot_number)] = slot
             slot_number += 1
 
         # add the wics
@@ -172,6 +171,8 @@ class Router(BaseVM):
             for wic_slot_number in range(0, len(self._slots[0].wics)):
                 if self._slots[0].wics[wic_slot_number]:
                     router_info["wic" + str(wic_slot_number)] = str(self._slots[0].wics[wic_slot_number])
+                else:
+                    router_info["wic" + str(wic_slot_number)] = None
 
         return router_info
 
@@ -187,16 +188,6 @@ class Router(BaseVM):
 
     @asyncio.coroutine
     def create(self):
-
-        # delete any previous file with same Dynamips identifier
-        project_dir = os.path.join(self.project.module_working_directory(self.manager.module_name.lower()))
-        for file in glob.glob(os.path.join(project_dir, "c[0-9][0-9][0-9][0-9]_i{}_*".format(self._dynamips_id))):
-            try:
-                log.debug("Deleting file {}".format(file))
-                yield from wait_run_in_executor(os.remove, file)
-            except OSError as e:
-                log.warn("Could not delete file {}: {}".format(file, e))
-                continue
 
         if not self._hypervisor:
             module_workdir = self.project.module_working_directory(self.manager.module_name.lower())

@@ -269,13 +269,16 @@ def test_set_platform(project, manager):
     assert vm.qemu_path == "/bin/qemu-system-x86_64"
 
 
-def test_disk_options(vm, loop, fake_qemu_img_binary):
+def test_disk_options(vm, tmpdir, loop, fake_qemu_img_binary):
+
+    vm._hda_disk_image = str(tmpdir / "test.qcow2")
+    open(vm._hda_disk_image, "w+").close()
 
     with asyncio_patch("asyncio.create_subprocess_exec", return_value=MagicMock()) as process:
         loop.run_until_complete(asyncio.async(vm._disk_options()))
         assert process.called
         args, kwargs = process.call_args
-        assert args == (fake_qemu_img_binary, "create", "-f", "qcow2", os.path.join(vm.working_dir, "flash.qcow2"), "256M")
+        assert args == (fake_qemu_img_binary, "create", "-o", "backing_file={}".format(vm._hda_disk_image), "-f", "qcow2", os.path.join(vm.working_dir, "hda_disk.qcow2"))
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not supported on Windows")
@@ -336,9 +339,11 @@ def test_build_command(vm, loop, fake_qemu_binary, port_manager):
             "-name",
             "test",
             "-m",
-            "256",
-            "-hda",
-            os.path.join(vm.working_dir, "flash.qcow2"),
+            "256M",
+            "-smp",
+            "cpus=1",
+            "-boot",
+            "order=c",
             "-serial",
             "telnet:127.0.0.1:{},server,nowait".format(vm.console),
             "-net",
@@ -407,3 +412,68 @@ def test_options(vm):
     vm.options = "-usb"
     assert vm.options == "-usb"
     assert vm.kvm is False
+
+
+def test_get_qemu_img(vm, tmpdir):
+
+    open(str(tmpdir / "qemu-sytem-x86_64"), "w+").close()
+    open(str(tmpdir / "qemu-img"), "w+").close()
+    vm._qemu_path = str(tmpdir / "qemu-sytem-x86_64")
+    assert vm._get_qemu_img() == str(tmpdir / "qemu-img")
+
+
+def test_get_qemu_img_not_exist(vm, tmpdir):
+
+    open(str(tmpdir / "qemu-sytem-x86_64"), "w+").close()
+    vm._qemu_path = str(tmpdir / "qemu-sytem-x86_64")
+    with pytest.raises(QemuError):
+        vm._get_qemu_img()
+
+
+def test_run_with_kvm_darwin(darwin_platform, vm):
+
+    with patch("configparser.SectionProxy.getboolean", return_value=True):
+        assert vm._run_with_kvm("qemu-system-x86_64", "") is False
+
+
+def test_run_with_kvm_windows(windows_platform, vm):
+
+    with patch("configparser.SectionProxy.getboolean", return_value=True):
+        assert vm._run_with_kvm("qemu-system-x86_64.exe", "") is False
+
+
+def test_run_with_kvm_linux(linux_platform, vm):
+
+    with patch("os.path.exists", return_value=True) as os_path:
+        with patch("configparser.SectionProxy.getboolean", return_value=True):
+            assert vm._run_with_kvm("qemu-system-x86_64", "") is True
+            os_path.assert_called_with("/dev/kvm")
+
+
+def test_run_with_kvm_linux_config_desactivated(linux_platform, vm):
+
+    with patch("os.path.exists", return_value=True) as os_path:
+        with patch("configparser.SectionProxy.getboolean", return_value=False):
+            assert vm._run_with_kvm("qemu-system-x86_64", "") is False
+
+
+def test_run_with_kvm_linux_options_no_kvm(linux_platform, vm):
+
+    with patch("os.path.exists", return_value=True) as os_path:
+        with patch("configparser.SectionProxy.getboolean", return_value=True):
+            assert vm._run_with_kvm("qemu-system-x86_64", "-no-kvm") is False
+
+
+def test_run_with_kvm_not_x86(linux_platform, vm):
+
+    with patch("os.path.exists", return_value=True) as os_path:
+        with patch("configparser.SectionProxy.getboolean", return_value=True):
+            assert vm._run_with_kvm("qemu-system-arm", "") is False
+
+
+def test_run_with_kvm_linux_dev_kvm_missing(linux_platform, vm):
+
+    with patch("os.path.exists", return_value=False) as os_path:
+        with patch("configparser.SectionProxy.getboolean", return_value=True):
+            with pytest.raises(QemuError):
+                vm._run_with_kvm("qemu-system-x86_64", "")

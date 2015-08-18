@@ -199,7 +199,7 @@ class VMwareVM(BaseVM):
             # check if any vmnet interface managed by GNS3 is being used on existing VMware adapters
             if self._get_vmx_setting("ethernet{}.present".format(adapter_number), "TRUE"):
                 connection_type = "ethernet{}.connectiontype".format(adapter_number)
-                if self._vmx_pairs[connection_type] in ("hostonly", "custom"):
+                if connection_type in self._vmx_pairs and self._vmx_pairs[connection_type] in ("hostonly", "custom"):
                     vnet = "ethernet{}.vnet".format(adapter_number)
                     if vnet in self._vmx_pairs:
                         vmnet = os.path.basename(self._vmx_pairs[vnet])
@@ -217,11 +217,10 @@ class VMwareVM(BaseVM):
                 if self._get_vmx_setting("ethernet{}.present".format(adapter_number), "TRUE"):
                     # check for the connection type
                     connection_type = "ethernet{}.connectiontype".format(adapter_number)
-                    if connection_type in self._vmx_pairs:
-                        if self._vmx_pairs[connection_type] in ("nat", "bridged", "hostonly"):
-                            raise VMwareError("Attachment ({}) already configured on network adapter {}. "
-                                              "Please remove it or allow GNS3 to use any adapter.".format(self._vmx_pairs[connection_type],
-                                                                                                          adapter_number))
+                    if connection_type in self._vmx_pairs and self._vmx_pairs[connection_type] in ("nat", "bridged", "hostonly"):
+                        raise VMwareError("Attachment ({}) already configured on network adapter {}. "
+                                          "Please remove it or allow GNS3 to use any adapter.".format(self._vmx_pairs[connection_type],
+                                                                                                      adapter_number))
 
         # now configure VMware network adapters
         self.manager.refresh_vmnet_list()
@@ -344,6 +343,22 @@ class VMwareVM(BaseVM):
         if parse_version(self._ubridge_hypervisor.version) < parse_version('0.9.1'):
             raise VMwareError("uBridge version must be >= 0.9.1, detected version is {}".format(self._ubridge_hypervisor.version))
 
+    def check_hw_virtualization(self):
+        """
+        Returns either hardware virtualization is activated or not.
+
+        :returns: boolean
+        """
+
+        try:
+            self._vmx_pairs = self.manager.parse_vmware_file(self._vmx_path)
+        except OSError as e:
+            raise VMwareError('Could not read VMware VMX file "{}": {}'.format(self._vmx_path, e))
+
+        if self._get_vmx_setting("vhv.enable", "TRUE"):
+            return True
+        return False
+
     @asyncio.coroutine
     def start(self):
         """
@@ -356,6 +371,8 @@ class VMwareVM(BaseVM):
         ubridge_path = self.ubridge_path
         if not ubridge_path or not os.path.isfile(ubridge_path):
             raise VMwareError("ubridge is necessary to start a VMware VM")
+
+        yield from self._start_ubridge()
 
         try:
             self._vmx_pairs = self.manager.parse_vmware_file(self._vmx_path)
@@ -375,7 +392,6 @@ class VMwareVM(BaseVM):
         else:
             yield from self._control_vm("start")
 
-        yield from self._start_ubridge()
         for adapter_number in range(0, self._adapters):
             nio = self._ethernet_adapters[adapter_number].get_nio(0)
             if nio:
@@ -384,6 +400,9 @@ class VMwareVM(BaseVM):
         if self._enable_remote_console and self._console is not None:
             yield from asyncio.sleep(1)  # give some time to VMware to create the pipe file.
             self._start_remote_console()
+
+        if self._get_vmx_setting("vhv.enable", "TRUE"):
+            self._hw_virtualization = True
 
         self._started = True
         log.info("VMware VM '{name}' [{id}] started".format(name=self.name, id=self.id))
@@ -394,6 +413,7 @@ class VMwareVM(BaseVM):
         Stops this VMware VM.
         """
 
+        self._hw_virtualization = False
         self._stop_remote_console()
         if self._ubridge_hypervisor and self._ubridge_hypervisor.is_running():
             yield from self._ubridge_hypervisor.stop()
@@ -432,7 +452,10 @@ class VMwareVM(BaseVM):
                     log.debug("enabling remaining adapter {}".format(adapter_number))
                     self._vmx_pairs["ethernet{}.startconnected".format(adapter_number)] = "TRUE"
 
-            self.manager.write_vmx_file(self._vmx_path, self._vmx_pairs)
+            try:
+                self.manager.write_vmx_file(self._vmx_path, self._vmx_pairs)
+            except OSError as e:
+                raise VMwareError('Could not write VMware VMX file "{}": {}'.format(self._vmx_path, e))
 
         log.info("VMware VM '{name}' [{id}] stopped".format(name=self.name, id=self.id))
 

@@ -16,6 +16,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import sys
+
 from aiohttp.web import HTTPConflict
 from ...web.route import Route
 from ...schemas.nio import NIO_SCHEMA
@@ -190,6 +192,10 @@ class VirtualBoxHandler:
 
         vbox_manager = VirtualBox.instance()
         vm = vbox_manager.get_vm(request.match_info["vm_id"], project_id=request.match_info["project_id"])
+        if (yield from vm.check_hw_virtualization()):
+            pm = ProjectManager.instance()
+            if pm.check_hardware_virtualization(vm) is False:
+                raise HTTPConflict(text="Cannot start VM because hardware virtualization (VT-x/AMD-V) is already used by another software like VMware or KVM (on Linux)")
         yield from vm.start()
         response.set_status(204)
 

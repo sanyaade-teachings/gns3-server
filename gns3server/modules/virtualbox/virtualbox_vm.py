@@ -170,6 +170,19 @@ class VirtualBoxVM(BaseVM):
             self._ram = int(vm_info["memory"])
 
     @asyncio.coroutine
+    def check_hw_virtualization(self):
+        """
+        Returns either hardware virtualization is activated or not.
+
+        :returns: boolean
+        """
+
+        vm_info = yield from self._get_vm_info()
+        if "hwvirtex" in vm_info and vm_info["hwvirtex"] == "on":
+            return True
+        return False
+
+    @asyncio.coroutine
     def start(self):
         """
         Starts this VirtualBox VM.
@@ -203,12 +216,16 @@ class VirtualBoxVM(BaseVM):
         if self._enable_remote_console and self._console is not None:
             self._start_remote_console()
 
+        if (yield from self.check_hw_virtualization()):
+            self._hw_virtualization = True
+
     @asyncio.coroutine
     def stop(self):
         """
         Stops this VirtualBox VM.
         """
 
+        self._hw_virtualization = False
         self._stop_remote_console()
         vm_state = yield from self._get_vm_state()
         if vm_state == "running" or vm_state == "paused" or vm_state == "stuck":
@@ -611,10 +628,11 @@ class VirtualBoxVM(BaseVM):
 
         # check the maximum number of adapters supported by the VM
         vm_info = yield from self._get_vm_info()
-        chipset = vm_info["chipset"]
         maximum_adapters = 8
-        if chipset == "ich9":
-            maximum_adapters = int(self._system_properties["Maximum ICH9 Network Adapter count"])
+        if "chipset" in vm_info:
+            chipset = vm_info["chipset"]
+            if chipset == "ich9":
+                maximum_adapters = int(self._system_properties["Maximum ICH9 Network Adapter count"])
         return maximum_adapters
 
     def _get_pipe_name(self):
