@@ -318,6 +318,10 @@ class Container(BaseVM):
         yield from self._ubridge_hypervisor.send("bridge delete bridge{name}".format(
             name=adapter_number))
 
+        adapter = self._ethernet_adapters[adapter_number]
+        yield from self._ubridge_hypervisor.send("docker delete_veth {name}".format(
+            name=adapter.host_ifc))
+
     def adapter_add_nio_binding(self, adapter_number, nio):
         """Adds an adapter NIO binding.
 
@@ -347,25 +351,22 @@ class Container(BaseVM):
 
         :returns: NIO instance
         """
-
         try:
             adapter = self._ethernet_adapters[adapter_number]
         except IndexError:
             raise DockerError(
-                "Adapter {adapter_number} doesn't exist on VMware VM '{name}'".format(
+                "Adapter {adapter_number} doesn't exist on Docker VM '{name}'".format(
                     name=self.name, adapter_number=adapter_number))
 
-        nio = adapter.get_nio(0)
-        if isinstance(nio, NIOUDP):
-            self.manager.port_manager.release_udp_port(
-                nio.lport, self._project)
         adapter.remove_nio(0)
-        if self._started:
+        try:
             yield from self._delete_ubridge_connection(adapter_number)
+        except:
+            pass
 
         log.info(
             "Docker VM '{name}' [{id}]: {nio} removed from adapter {adapter_number}".format(
-                name=self.name, id=self.id, nio=nio,
+                name=self.name, id=self.id, nio=adapter.host_ifc,
                 adapter_number=adapter_number))
 
     @property
