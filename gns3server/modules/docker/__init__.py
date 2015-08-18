@@ -23,6 +23,7 @@ import asyncio
 import logging
 import aiohttp
 import docker
+from requests.exceptions import ConnectionError
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +41,6 @@ class Docker(BaseManager):
         super().__init__()
         # FIXME: make configurable and start docker before trying
         self._server_url = 'unix://var/run/docker.sock'
-        # FIXME: handle client failure
         self._client = docker.Client(base_url=self._server_url)
         self._execute_lock = asyncio.Lock()
 
@@ -56,7 +56,6 @@ class Docker(BaseManager):
     @server_url.setter
     def server_url(self, value):
         self._server_url = value
-        # FIXME: handle client failure
         self._client = docker.Client(base_url=value)
 
     @asyncio.coroutine
@@ -64,7 +63,6 @@ class Docker(BaseManager):
         command = getattr(self._client, command)
         log.debug("Executing Docker with command: {}".format(command))
         try:
-            # FIXME: async wait
             result = command(**kwargs)
         except Exception as error:
             raise DockerError("Docker has returned an error: {}".format(error))
@@ -78,10 +76,15 @@ class Docker(BaseManager):
         :rtype: list
         """
         images = []
-        for image in self._client.images():
-            for tag in image['RepoTags']:
-                images.append({'imagename': tag})
-        return images
+        try:
+            for image in self._client.images():
+                for tag in image['RepoTags']:
+                    images.append({'imagename': tag})
+            return images
+        except ConnectionError as error:
+            raise DockerError(
+                """Docker couldn't list images and returned an error: {}
+Is the Docker service running?""".format(error))
 
     @asyncio.coroutine
     def list_containers(self):
@@ -101,7 +104,6 @@ class Docker(BaseManager):
         :returns: Docker container
         """
         if project_id:
-            # check if the project_id exists
             project = ProjectManager.instance().get_project(project_id)
 
         if cid not in self._vms:

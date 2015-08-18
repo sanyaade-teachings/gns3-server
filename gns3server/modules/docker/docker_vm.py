@@ -51,9 +51,10 @@ class Container(BaseVM):
         self._project = project
         self._manager = manager
         self._image = image
-        self._temporary_directory = None
+        self._veths = []
         self._ethernet_adapters = []
         self._ubridge_hypervisor = None
+        self._temporary_directory = None
 
         log.debug(
             "{module}: {name} [{image}] initialized.".format(
@@ -69,6 +70,11 @@ class Container(BaseVM):
             "project_id": self._project.id,
             "image": self._image,
         }
+
+    @property
+    def veths(self):
+        """Returns Docker host veth interfaces."""
+        return self._veths
 
     @asyncio.coroutine
     def _get_container_state(self):
@@ -277,6 +283,7 @@ class Container(BaseVM):
         yield from self._ubridge_hypervisor.send(
             'docker create_veth {hostif} {guestif}'.format(
                 guestif=adapter.guest_ifc, hostif=adapter.host_ifc))
+        self._veths.append(adapter.host_ifc)
 
         namespace = yield from self.get_namespace()
         yield from self._ubridge_hypervisor.send(
