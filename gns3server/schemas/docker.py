@@ -36,6 +36,11 @@ DOCKER_CREATE_SCHEMA = {
             "type": "string",
             "minLength": 1,
         },
+        "startcmd": {
+            "description": "Docker CMD entry",
+            "type": "string",
+            "minLength": 1,
+        },
         "imagename": {
             "description": "Docker image name",
             "type": "string",

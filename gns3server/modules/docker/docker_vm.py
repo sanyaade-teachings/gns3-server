@@ -45,16 +45,18 @@ class Container(BaseVM):
     :param manager: Manager instance
     :param image: Docker image
     """
-    def __init__(self, name, vm_id, project, manager, image):
+    def __init__(self, name, vm_id, project, manager, image, startcmd=None):
         self._name = name
         self._id = vm_id
         self._project = project
         self._manager = manager
         self._image = image
+        self._startcmd = startcmd
         self._veths = []
         self._ethernet_adapters = []
         self._ubridge_hypervisor = None
         self._temporary_directory = None
+        self._hw_virtualization = False
 
         log.debug(
             "{module}: {name} [{image}] initialized.".format(
@@ -104,15 +106,17 @@ class Container(BaseVM):
     @asyncio.coroutine
     def create(self):
         """Creates the Docker container."""
-        result = yield from self.manager.execute(
-            "create_container", {
-                "name": self._name,
-                "image": self._image,
-                "network_disabled": True,
-                "host_config": create_host_config(
-                    privileged=True, cap_add=['ALL'])
-            }
-        )
+        params = {
+            "name": self._name,
+            "image": self._image,
+            "network_disabled": True,
+            "host_config": create_host_config(
+                privileged=True, cap_add=['ALL'])
+        }
+        if self._startcmd:
+            params.update({'command': self._startcmd})
+
+        result = yield from self.manager.execute("create_container", params)
         self._cid = result['Id']
         log.info("Docker container '{name}' [{id}] created".format(
             name=self._name, id=self._id))

@@ -62,7 +62,8 @@ class DockerHandler:
             request.json.pop("name"),
             request.match_info["project_id"],
             request.json.get("id"),
-            image=request.json.pop("imagename")
+            image=request.json.pop("imagename"),
+            startcmd=request.json.get("startcmd")
         )
         # FIXME: DO WE NEED THIS?
         for name, value in request.json.items():
