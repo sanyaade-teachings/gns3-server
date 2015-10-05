@@ -427,8 +427,8 @@ class BaseManager:
             return ""
         img_directory = self.get_images_directory()
         path = self.get_abs_image_path(path)
-        if os.path.dirname(path) == img_directory:
-            return os.path.basename(path)
+        if os.path.commonprefix([img_directory, path]) == img_directory:
+           return os.path.relpath(path, img_directory)
         return path
 
     @asyncio.coroutine
@@ -460,11 +460,13 @@ class BaseManager:
     @asyncio.coroutine
     def write_image(self, filename, stream):
         directory = self.get_images_directory()
-        path = os.path.join(directory, os.path.basename(filename))
+        path = os.path.abspath(os.path.join(directory, *os.path.split(filename)))
+        if os.path.commonprefix([directory, path]) != directory:
+            raise aiohttp.web.HTTPForbidden(text="Could not write image: {}, {} is forbiden".format(filename, path))
         log.info("Writting image file %s", path)
         try:
             remove_checksum(path)
-            os.makedirs(directory, exist_ok=True)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, 'wb+') as f:
                 while True:
                     packet = yield from stream.read(512)
@@ -474,4 +476,4 @@ class BaseManager:
             os.chmod(path, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
             md5sum(path)
         except OSError as e:
-            raise aiohttp.web.HTTPConflict(text="Could not write image: {} to {}".format(filename, e))
+            raise aiohttp.web.HTTPConflict(text="Could not write image: {} because {}".format(filename, e))
