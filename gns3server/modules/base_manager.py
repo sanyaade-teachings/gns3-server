@@ -373,7 +373,7 @@ class BaseManager:
             nio = NIOUDP(lport, rhost, rport)
         elif nio_settings["type"] == "nio_tap":
             tap_device = nio_settings["tap_device"]
-            #if not is_interface_up(tap_device):
+            # if not is_interface_up(tap_device):
             #    raise aiohttp.web.HTTPConflict(text="TAP interface {} does not exist or is down".format(tap_device))
             # FIXME: check for permissions on tap device
             # if not self.has_privileged_access(executable):
