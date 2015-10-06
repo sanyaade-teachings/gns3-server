@@ -31,6 +31,7 @@ from uuid import UUID, uuid4
 from gns3server.utils.interfaces import is_interface_up
 from ..config import Config
 from ..utils.asyncio import wait_run_in_executor
+from ..utils import force_unix_path
 from .project_manager import ProjectManager
 
 from .nios.nio_udp import NIOUDP
@@ -408,10 +409,10 @@ class BaseManager:
             if not os.path.exists(path):
                 old_path = os.path.normpath(os.path.join(img_directory, '..', *s))
                 if os.path.exists(old_path):
-                    return old_path
+                    return force_unix_path(old_path)
 
-            return path
-        return path
+            return force_unix_path(path)
+        return force_unix_path(path)
 
     def get_relative_image_path(self, path):
         """
@@ -428,7 +429,7 @@ class BaseManager:
         img_directory = self.get_images_directory()
         path = self.get_abs_image_path(path)
         if os.path.commonprefix([img_directory, path]) == img_directory:
-           return os.path.relpath(path, img_directory)
+            return os.path.relpath(path, img_directory)
         return path
 
     @asyncio.coroutine
