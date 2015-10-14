@@ -42,21 +42,6 @@ class Docker(BaseManager):
         # FIXME: make configurable and start docker before trying
         self._server_url = 'unix://var/run/docker.sock'
         self._client = docker.Client(base_url=self._server_url)
-        self._execute_lock = asyncio.Lock()
-
-    @property
-    def server_url(self):
-        """Returns the Docker server url.
-
-        :returns: url
-        :rtype: string
-        """
-        return self._server_url
-
-    @server_url.setter
-    def server_url(self, value):
-        self._server_url = value
-        self._client = docker.Client(base_url=value)
 
     @asyncio.coroutine
     def execute(self, command, kwargs, timeout=60):
@@ -85,15 +70,6 @@ class Docker(BaseManager):
             raise DockerError(
                 """Docker couldn't list images and returned an error: {}
 Is the Docker service running?""".format(error))
-
-    @asyncio.coroutine
-    def list_containers(self):
-        """Gets Docker container list.
-
-        :returns: list of dicts
-        :rtype: list
-        """
-        return self._client.containers()
 
     def get_container(self, cid, project_id=None):
         """Returns a Docker container.
