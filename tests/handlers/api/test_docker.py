@@ -25,6 +25,7 @@ import aiohttp
 from tests.utils import asyncio_patch
 from unittest.mock import patch, MagicMock, PropertyMock
 
+
 @pytest.fixture
 def base_params():
     """Return standard parameters"""
@@ -88,9 +89,9 @@ def test_docker_reload(server, vm):
 
 def test_docker_nio_create_udp(server, vm):
     response = server.post("/projects/{project_id}/docker/vms/{vm_id}/adapters/0/ports/0/nio".format(project_id=vm["project_id"], vm_id=vm["vm_id"]), {"type": "nio_udp",
-                                                                                                                                                    "lport": 4242,
-                                                                                                                                                    "rport": 4343,
-                                                                                                                                                    "rhost": "127.0.0.1"},
+                                                                                                                                                       "lport": 4242,
+                                                                                                                                                       "rport": 4343,
+                                                                                                                                                       "rhost": "127.0.0.1"},
                            example=True)
     assert response.status == 201
     assert response.route == "/projects/{project_id}/docker/vms/{vm_id}/adapters/{adapter_number:\d+}/ports/{port_number:\d+}/nio"
@@ -99,9 +100,9 @@ def test_docker_nio_create_udp(server, vm):
 
 def test_docker_delete_nio(server, vm):
     server.post("/projects/{project_id}/docker/vms/{vm_id}/adapters/0/ports/0/nio".format(project_id=vm["project_id"], vm_id=vm["vm_id"]), {"type": "nio_udp",
-                                                                                                                                         "lport": 4242,
-                                                                                                                                         "rport": 4343,
-                                                                                                                                         "rhost": "127.0.0.1"})
+                                                                                                                                            "lport": 4242,
+                                                                                                                                            "rport": 4343,
+                                                                                                                                            "rhost": "127.0.0.1"})
     response = server.delete("/projects/{project_id}/docker/vms/{vm_id}/adapters/0/ports/0/nio".format(project_id=vm["project_id"], vm_id=vm["vm_id"]), example=True)
     assert response.status == 204
     assert response.route == "/projects/{project_id}/docker/vms/{vm_id}/adapters/{adapter_number:\d+}/ports/{port_number:\d+}/nio"
