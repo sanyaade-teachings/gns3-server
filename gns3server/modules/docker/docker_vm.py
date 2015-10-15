@@ -53,10 +53,13 @@ class Container(BaseVM):
         self._image = image
         self._startcmd = startcmd
         self._veths = []
+        self._cid = None
         self._ethernet_adapters = []
         self._ubridge_hypervisor = None
         self._temporary_directory = None
         self._hw_virtualization = False
+
+        self.adapters = 1
 
         log.debug(
             "{module}: {name} [{image}] initialized.".format(
@@ -68,7 +71,7 @@ class Container(BaseVM):
         return {
             "name": self._name,
             "vm_id": self._id,
-            "cid": self._cid,
+            "container_id": self._cid,
             "project_id": self._project.id,
             "image": self._image,
         }

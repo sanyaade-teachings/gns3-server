@@ -21,7 +21,7 @@ from ...web.route import Route
 from ...modules.docker import Docker
 
 from ...schemas.docker import (
-    DOCKER_CREATE_SCHEMA, DOCKER_UPDATE_SCHEMA, DOCKER_CAPTURE_SCHEMA,
+    DOCKER_CREATE_SCHEMA,
     DOCKER_OBJECT_SCHEMA
 )
 from ...schemas.nio import NIO_SCHEMA
@@ -44,7 +44,7 @@ class DockerHandler:
 
     @classmethod
     @Route.post(
-        r"/projects/{project_id}/docker/images",
+        r"/projects/{project_id}/docker/vms",
         parameters={
             "project_id": "UUID for the project"
         },
@@ -61,11 +61,10 @@ class DockerHandler:
         container = yield from docker_manager.create_vm(
             request.json.pop("name"),
             request.match_info["project_id"],
-            request.json.get("id"),
-            image=request.json.pop("imagename"),
-            startcmd=request.json.get("startcmd")
+            request.json.get("vm_id"),
+            image=request.json.pop("image"),
+            startcmd=request.json.get("command")
         )
-        # FIXME: DO WE NEED THIS?
         for name, value in request.json.items():
             if name != "_vm_id":
                 if hasattr(container, name) and getattr(container, name) != value:
@@ -76,7 +75,7 @@ class DockerHandler:
 
     @classmethod
     @Route.post(
-        r"/projects/{project_id}/docker/images/{id}/start",
+        r"/projects/{project_id}/docker/vms/{id}/start",
         parameters={
             "project_id": "UUID of the project",
             "id": "ID of the container"
@@ -99,7 +98,7 @@ class DockerHandler:
 
     @classmethod
     @Route.post(
-        r"/projects/{project_id}/docker/images/{id}/stop",
+        r"/projects/{project_id}/docker/vms/{id}/stop",
         parameters={
             "project_id": "UUID of the project",
             "id": "ID of the container"
@@ -122,7 +121,7 @@ class DockerHandler:
 
     @classmethod
     @Route.post(
-        r"/projects/{project_id}/docker/images/{id}/reload",
+        r"/projects/{project_id}/docker/vms/{id}/reload",
         parameters={
             "project_id": "UUID of the project",
             "id": "ID of the container"
@@ -145,7 +144,7 @@ class DockerHandler:
 
     @classmethod
     @Route.delete(
-        r"/projects/{project_id}/docker/images/{id}",
+        r"/projects/{project_id}/docker/vms/{id}",
         parameters={
             "id": "ID for the container",
             "project_id": "UUID for the project"
@@ -166,7 +165,7 @@ class DockerHandler:
 
     @classmethod
     @Route.post(
-        r"/projects/{project_id}/docker/images/{id}/suspend",
+        r"/projects/{project_id}/docker/vms/{id}/suspend",
         parameters={
             "project_id": "UUID of the project",
             "id": "ID of the container"
@@ -188,7 +187,7 @@ class DockerHandler:
         response.set_status(204)
 
     @Route.post(
-        r"/projects/{project_id}/docker/images/{id}/adapters/{adapter_number:\d+}/ports/{port_number:\d+}/nio",
+        r"/projects/{project_id}/docker/vms/{vm_id}/adapters/{adapter_number:\d+}/ports/{port_number:\d+}/nio",
         parameters={
             "project_id": "UUID for the project",
             "id": "ID of the container",
@@ -206,7 +205,7 @@ class DockerHandler:
     def create_nio(request, response):
         docker_manager = Docker.instance()
         container = docker_manager.get_container(
-            request.match_info["id"],
+            request.match_info["vm_id"],
             project_id=request.match_info["project_id"])
         nio_type = request.json["type"]
         if nio_type not in ("nio_udp"):
@@ -224,7 +223,7 @@ class DockerHandler:
 
     @classmethod
     @Route.delete(
-        r"/projects/{project_id}/docker/images/{id}/adapters/{adapter_number:\d+}/ports/{port_number:\d+}/nio",
+        r"/projects/{project_id}/docker/vms/{vm_id}/adapters/{adapter_number:\d+}/ports/{port_number:\d+}/nio",
         parameters={
             "project_id": "UUID for the project",
             "id": "ID of the container",
@@ -240,7 +239,7 @@ class DockerHandler:
     def delete_nio(request, response):
         docker_manager = Docker.instance()
         container = docker_manager.get_container(
-            request.match_info["id"],
+            request.match_info["vm_id"],
             project_id=request.match_info["project_id"])
         yield from container.adapter_remove_nio_binding(
             int(request.match_info["adapter_number"]))

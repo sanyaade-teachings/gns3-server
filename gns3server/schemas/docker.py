@@ -23,56 +23,18 @@ DOCKER_CREATE_SCHEMA = {
     "properties": {
         "vm_id": {
             "description": "Docker VM instance identifier",
-            "oneOf": [
-                {"type": "string",
-                 "minLength": 36,
-                 "maxLength": 36,
-                 "pattern": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"},
-                {"type": "integer"}  # for legacy projects
-            ]
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "pattern": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"
         },
         "name": {
             "description": "Docker container name",
             "type": "string",
             "minLength": 1,
         },
-        "startcmd": {
+        "command": {
             "description": "Docker CMD entry",
-            "type": "string",
-            "minLength": 1,
-        },
-        "imagename": {
-            "description": "Docker image name",
-            "type": "string",
-            "minLength": 1,
-        },
-        "adapters": {
-            "description": "number of adapters",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 64,
-        },
-        "adapter_type": {
-            "description": "Docker adapter type",
-            "type": "string",
-            "minLength": 1,
-        },
-        "console": {
-            "description": "console name",
-            "type": "string",
-            "minLength": 1,
-        },
-    },
-    "additionalProperties": False,
-}
-
-DOCKER_UPDATE_SCHEMA = {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "description": "Request validation to update a Docker container",
-    "type": "object",
-    "properties": {
-        "name": {
-            "description": "Docker container name",
             "type": "string",
             "minLength": 1,
         },
@@ -81,34 +43,8 @@ DOCKER_UPDATE_SCHEMA = {
             "type": "string",
             "minLength": 1,
         },
-        "adapters": {
-            "description": "number of adapters",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 64,
-        },
-        "adapter_type": {
-            "description": "Docker adapter type",
-            "type": "string",
-            "minLength": 1,
-        },
     },
     "additionalProperties": False,
-}
-
-DOCKER_CAPTURE_SCHEMA = {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "description": "Request validation to start a packet capture on a Docker container port",
-    "type": "object",
-    "properties": {
-        "capture_file_name": {
-            "description": "Capture file name",
-            "type": "string",
-            "minLength": 1,
-        },
-    },
-    "additionalProperties": False,
-    "required": ["capture_file_name"]
 }
 
 DOCKER_OBJECT_SCHEMA = {
@@ -128,12 +64,12 @@ DOCKER_OBJECT_SCHEMA = {
             "maxLength": 36,
             "pattern": "^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"
         },
-        "cid": {
+        "container_id": {
             "description": "Docker container ID",
             "type": "string",
-            "minLength": 64,
-            "maxLength": 64,
-            "pattern": "^[a-zA-Z0-9_.-]{64}$"
+            "minLength": 12,
+            "maxLength": 12,
+            "pattern": "^[a-f0-9]{12}$"
         },
         "project_id": {
             "description": "Project UUID",
@@ -146,18 +82,7 @@ DOCKER_OBJECT_SCHEMA = {
             "description": "Docker image name",
             "type": "string",
             "minLength": 1,
-        },
-        "adapters": {
-            "description": "number of adapters",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 64,
-        },
-        "adapter_type": {
-            "description": "Docker adapter type",
-            "type": "string",
-            "minLength": 1,
-        },
+        }
     },
     "additionalProperties": False,
     "required": ["vm_id", "project_id"]
